@@ -1,0 +1,43 @@
+{
+    "version": 1,
+    "sequence-number":1,
+    "suit-common":{
+        
+        "suit-components":[
+        ["00"],
+        ["01","02"]
+        ],
+
+        "suit-shared-sequence":{
+                "suit-directive-override-parameters":
+                        {"vendor-id":"67e55044-10b1-426f-9247-bb680e5fe0c8",
+                        "class-id":"69e55044-10b1-426f-2974-bb680e5fedc8",
+                        "image-size":1024,
+                        "image-digest":{
+                            "algorithm":"sha256",
+                            "digest":"123abc456"
+                            }
+                        },
+                "suit-condition-vendor-identifier":15,
+                "suit-condition-class-identifier":15
+        }
+    },
+
+    "sequence":
+        {
+            "payload-fetch":
+                {
+                    "suit-condition-image-match": 15
+                },
+            
+            "payload-installation":
+                {
+                    "suit-condition-image-match": 15
+
+                },
+            "image-validation":
+                {
+                    "suit-condition-image-match": 15
+                }
+        }
+}
