@@ -17,3 +17,13 @@ only cargo run for default path "examples/test1.json"
    - start with adding to parse fn and if necessary add helper function
    - add to return value
  - Implement serde::Serialize Trait in encode.rs
+
+## Copyright & License
+
+Taylor is licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](./LICENSE-APACHE) or https://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](./LICENSE-MIT) or https://opensource.org/licenses/MIT)
+
+at your option.
+
