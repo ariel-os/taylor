@@ -1,0 +1,84 @@
+{
+    "version": 1,
+    "sequence-number": 1757260800,
+
+    "suit-common": {
+        "suit-components": [
+            ["00"],
+            ["01"],
+            ["02"],
+            ["03"]
+        ],
+
+        "suit-shared-sequence": [
+            {"suit-directive-override-parameters": {
+                "vendor-id": "5a615b0b-cdf3-5c19-9d90-d3b2a54c9f18",
+                "class-id": "6f0c1a5e-2b0e-5d0e-8f9d-3a5b6c7d8e9f"
+            }},
+            {"suit-condition-vendor-identifier": 15},
+            {"suit-condition-class-identifier": 15},
+            {"suit-directive-try-each": [
+                [
+                    {"suit-directive-override-parameters": {
+                        "version": {"comparison": "equal", "value": [1, 0, 0]}
+                    }},
+                    {"suit-condition-version": 15}
+                ],
+                [
+                    {"suit-directive-override-parameters": {
+                        "version": {"comparison": "equal", "value": [1, 1, 0]}
+                    }},
+                    {"suit-condition-version": 15}
+                ],
+                [
+                    {"suit-directive-override-parameters": {
+                        "version": {"comparison": "equal", "value": [2, 0, 0]}
+                    }},
+                    {"suit-condition-version": 15}
+                ]
+            ]},
+            {"suit-directive-set-component-index": 0},
+            {"suit-directive-override-parameters": {
+                "image-size": 16
+            }},
+            {"suit-directive-set-component-index": 1},
+            {"suit-directive-override-parameters": {
+                "image-size": 64
+            }},
+            {"suit-directive-set-component-index": 2},
+            {"suit-directive-override-parameters": {
+                "image-size": 192
+            }},
+            {"suit-directive-set-component-index": 3},
+            {"suit-directive-override-parameters": {
+                "image-size": 60523,
+                "image-digest": {
+                    "algorithm": "sha256",
+                    "digest": "00a7c6612a7cb311ab7f3d6100cc169575c6a19bdc758069416e6de4c0c900dc"
+                }
+            }}
+        ]
+    },
+
+    "sequence": {
+        "payload-installation": [
+            {"suit-directive-set-component-index": 0},
+            {"suit-directive-override-parameters": {
+                "content": "ebd62792959a48ea4df59fd4b3985e55"
+            }},
+            {"suit-directive-write": 15},
+
+            {"suit-directive-set-component-index": 1},
+            {"suit-directive-override-parameters": {
+                "content": "1422792d56afdf74f6b9abb64401416dd773d55d7b5e67a8bb106eb408c47c72cdc9d4521bbd4a4743878bd035ccd241b860c98b4094e1e33680d4e198d3be05"
+            }},
+            {"suit-directive-write": 15},
+
+            {"suit-directive-set-component-index": 2},
+            {"suit-directive-override-parameters": {
+                "content": "f892bceaa1b5f10a7a32ce4d647cdac026d062aaaf55127f7a478bb876170bf7730a4b87394ad92d980ee5cc8564556507f4cca245a02fb2891db2fe1efdd1b73f54bc592d8adcea8b53adc09a49d932d46a7e3176c0d7d85a47f853e95569a22a4e64ebf26f072e7fc35bca797c5bb61cca8cbe4501f302cf39d739220b89904bd11559d6c962d2cf4d344aa4cf3530127b0c92decc486bc9ef0e3f07f4b72bd2a0946af2eff990c54286d145bde4830340fa7323f27904df07b3c0d920d97a"
+            }},
+            {"suit-directive-write": 15}
+        ]
+    }
+}
