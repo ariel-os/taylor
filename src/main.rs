@@ -1,12 +1,12 @@
-use manifest_generator::manifest::{SuitAuthentication, SuitDigest, SuitEnvelope};
-use manifest_generator::sign::sign;
-use manifest_generator::{
+use taylor::manifest::{SuitAuthentication, SuitDigest, SuitEnvelope};
+use taylor::sign::sign;
+use taylor::{
     encode::{encode_envelope, encode_manifest},
     parse::parse,
 };
 use sha256::Sha256Digest;
 use std::env;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::Path;
 
@@ -18,22 +18,44 @@ fn main() {
 
     let mut key_path = Path::new("key.pem");
 
-    // Path to program is first value of args
-    if args.len() > 3 {
-        panic!(
-            "Unexpected argument length, provide one or none for the example path (cargo run -- <path> <key>)"
-        )
-    } else if args.len() == 3 {
+    // Pull the --output/-o <dir> flag out first so it can appear in any position,
+    // leaving the rest as positional (json path, key path) arguments.
+    let mut output_dir: Option<&str> = None;
+    let mut positional: Vec<&str> = Vec::new();
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-o" | "--output" => {
+                i += 1;
+                output_dir = Some(
+                    args.get(i)
+                        .expect("--output requires a directory argument")
+                        .as_str(),
+                );
+            }
+            other => positional.push(other),
+        }
+        i += 1;
+    }
 
-        json_path = Path::new(args.get(1).expect("JSON Path argument couldn't be parsed"));
+    let should_sign = positional.len() == 2;
+
+    // Path to program is first value of args
+    if positional.len() > 2 {
+        panic!(
+            "Unexpected argument length, provide one or none for the example path (cargo run -- <path> <key> [--output <dir>])"
+        )
+    } else if positional.len() == 2 {
+
+        json_path = Path::new(positional[0]);
         println!("Using path: {json_path:?}");
 
-        key_path = Path::new(args.get(2).expect("Path to key couldn't be parsed"));
+        key_path = Path::new(positional[1]);
 
-    } else if args.len() == 2 {
+    } else if positional.len() == 1 {
 
-        json_path = Path::new(args.get(1).expect("JSON Path argument couldn't be parsed"));
-        println!("Using path: {json_path:?}");    
+        json_path = Path::new(positional[0]);
+        println!("Using path: {json_path:?}");
 
     } else {
         println!("Using default path: {json_path:?}");
@@ -46,30 +68,44 @@ fn main() {
     let manifest = parse(&mut reader).unwrap();
 
     let manifest_cbor = encode_manifest(&manifest);
-
     // Handle Envelope
 
-    let digest = hex::encode(manifest_cbor).digest();
-
+    // Hash the raw manifest bytes, not their hex-text representation
+    let digest_hex = manifest_cbor.digest();
+    let digest = hex::decode(&digest_hex).expect("sha256 digest hex must be valid");
+    println!("digest string :: {:?}", digest_hex);
+    // SUIT_Authentication allows zero auth blocks; sign() adds a real one when signing
     let suit_auth = SuitAuthentication {
         digest: SuitDigest {
             algorithm: "sha256".to_owned(),
-            digest: digest,
+            digest,
         },
         auth_blocks: Vec::new(),
     };
 
     let mut envelope = SuitEnvelope {
         auth_block: suit_auth,
-        manifest: manifest,
+        manifest,
     };
 
     // Yet to be implemented
-    if args.len() == 3 {
-        envelope = sign(envelope, &key_path);
+    if should_sign {
+        envelope = sign(envelope, key_path);
     }
 
     let envelope_cbor = encode_envelope(&envelope);
 
     println!("CBOR Output of Envelope: {}", hex::encode(&envelope_cbor));
+
+    if let Some(dir) = output_dir {
+        let out_dir = Path::new(dir);
+        fs::create_dir_all(out_dir).expect("failed to create output directory");
+        let file_stem = json_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("manifest");
+        let out_path = out_dir.join(format!("{file_stem}.cbor"));
+        fs::write(&out_path, &envelope_cbor).expect("failed to write CBOR output file");
+        println!("Wrote CBOR output to: {out_path:?}");
+    }
 }

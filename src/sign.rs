@@ -1,3 +1,5 @@
+//! COSE authentication of a [`SuitEnvelope`]. **Not yet implemented.**
+
 #![allow(unused)]
 
 use crate::manifest::{COSEAuthBlockEnum, SuitAuthentication, SuitEnvelope, SuitManifest};
@@ -11,6 +13,11 @@ struct COSEMacTagged {}
 
 struct COSEMac0Tagged {}
 
+/// Adds a COSE authentication block over `envelope`'s digest, signed with the key at `key`.
+///
+/// # Panics
+///
+/// Always panics: unimplemented.
 pub fn sign(envelope: SuitEnvelope, key: &Path) -> SuitEnvelope {
     todo!()
 }

@@ -1,7 +1,13 @@
 [package]
-name = "manifest_generator"
+name = "taylor"
 version = "0.1.0"
 edition = "2024"
+description = "Generates IETF SUIT manifests, CBOR-encoded, from a JSON description"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/schnitzm/taylor"
+readme = "README.md"
+keywords = ["suit", "cbor", "firmware", "manifest", "iot"]
+categories = ["encoding", "embedded"]
 
 [dependencies]
 ciborium = "0.2.2"

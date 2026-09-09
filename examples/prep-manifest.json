@@ -1,0 +1,44 @@
+{
+    "version": 1,
+    "sequence-number": 1,
+    "suit-common": {
+
+        "suit-components": [
+            ["00"],
+            ["01"],
+            ["02"]
+        ],
+
+        "suit-shared-sequence": [
+            {"suit-directive-set-component-index": 0},
+            {"suit-directive-override-parameters": {
+                "vendor-id": "67e55044-10b1-426f-9247-bb680e5fe0c8",
+                "class-id": "69e55044-10b1-426f-2974-bb680e5fedc8"
+            }},
+            {"suit-condition-vendor-identifier": 15},
+            {"suit-condition-class-identifier": 15}
+        ]
+    },
+
+    "sequence": {
+        "payload-installation": [
+            {"suit-directive-set-component-index": 0},
+            {"suit-directive-override-parameters": {
+                "content": "3baf77dd95225aea79fcf1b78d19c784d4ec62235f782714132dd60af01f0907d3bdb2629fea5e756e9e28001e642db8d9c9655c81935fe001b75b3f88109f2a"
+            }},
+            {"suit-directive-write": 15},
+
+            {"suit-directive-set-component-index": 1},
+            {"suit-directive-override-parameters": {
+                "content": "748ca98f1bd54039b296292c17114512"
+            }},
+            {"suit-directive-write": 15},
+
+            {"suit-directive-set-component-index": 2},
+            {"suit-directive-override-parameters": {
+                "content": "438c272b03e5fd66dfd136a64ac9b8254f59e596c7013c0cd4eec3633bd194be792187c3ff51a5e71864fd27b54560a6aa4f4d54a8c39a8340ac6e3cf045cc5f7d26ea653dbfb59e14cc1459317a16e59dae16edb79d726d08d577816a14eac7b0e761d9e8ba249d2a6cb38a6025d49d705fbd60265baa904ef7fa73a0dbc2259a497538f93e78b1971876ead8df0754e43bd33e1ccde8e7bf033fb16aba554d4368ceb8966e06d9c770d99a65b849d314d987f13d89482988c0c716ae2546cc"
+            }},
+            {"suit-directive-write": 15}
+        ]
+    }
+}
