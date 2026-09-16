@@ -1,3 +1,4 @@
+use clap::Parser;
 use taylor::manifest::{SuitAuthentication, SuitDigest, SuitEnvelope};
 use taylor::sign::sign;
 use taylor::{
@@ -5,63 +6,42 @@ use taylor::{
     parse::parse,
 };
 use sha256::Sha256Digest;
-use std::env;
 use std::fs::{self, File};
 use std::io::BufReader;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+#[derive(Parser)]
+#[command(version, about)]
+struct Cli {
+    /// Path to the input JSON manifest.
+    json_path: Option<PathBuf>,
+
+    /// Path to the signing key. Providing this enables signing.
+    key_path: Option<PathBuf>,
+
+    /// Directory where the generated CBOR envelope is written.
+    #[arg(short, long, value_name = "DIR")]
+    output: Option<PathBuf>,
+}
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    let Cli {
+        json_path,
+        key_path,
+        output,
+    } = Cli::parse();
+    let has_json_path = json_path.is_some();
+    let should_sign = key_path.is_some();
+    let json_path = json_path.unwrap_or_else(|| PathBuf::from("examples/test.json"));
+    let key_path = key_path.unwrap_or_else(|| PathBuf::from("key.pem"));
 
-    // Provide default
-    let mut json_path = Path::new("examples/test.json");
-
-    let mut key_path = Path::new("key.pem");
-
-    // Pull the --output/-o <dir> flag out first so it can appear in any position,
-    // leaving the rest as positional (json path, key path) arguments.
-    let mut output_dir: Option<&str> = None;
-    let mut positional: Vec<&str> = Vec::new();
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "-o" | "--output" => {
-                i += 1;
-                output_dir = Some(
-                    args.get(i)
-                        .expect("--output requires a directory argument")
-                        .as_str(),
-                );
-            }
-            other => positional.push(other),
-        }
-        i += 1;
-    }
-
-    let should_sign = positional.len() == 2;
-
-    // Path to program is first value of args
-    if positional.len() > 2 {
-        panic!(
-            "Unexpected argument length, provide one or none for the example path (cargo run -- <path> <key> [--output <dir>])"
-        )
-    } else if positional.len() == 2 {
-
-        json_path = Path::new(positional[0]);
+    if should_sign || has_json_path {
         println!("Using path: {json_path:?}");
-
-        key_path = Path::new(positional[1]);
-
-    } else if positional.len() == 1 {
-
-        json_path = Path::new(positional[0]);
-        println!("Using path: {json_path:?}");
-
     } else {
         println!("Using default path: {json_path:?}");
     }
 
-    let mut reader = BufReader::new(File::open(json_path).unwrap());
+    let mut reader = BufReader::new(File::open(&json_path).unwrap());
 
     // Parse inner manifest
 
@@ -90,16 +70,15 @@ fn main() {
 
     // Yet to be implemented
     if should_sign {
-        envelope = sign(envelope, key_path);
+        envelope = sign(envelope, &key_path);
     }
 
     let envelope_cbor = encode_envelope(&envelope);
 
     println!("CBOR Output of Envelope: {}", hex::encode(&envelope_cbor));
 
-    if let Some(dir) = output_dir {
-        let out_dir = Path::new(dir);
-        fs::create_dir_all(out_dir).expect("failed to create output directory");
+    if let Some(out_dir) = output {
+        fs::create_dir_all(&out_dir).expect("failed to create output directory");
         let file_stem = json_path
             .file_stem()
             .and_then(|s| s.to_str())
