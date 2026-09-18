@@ -8,7 +8,7 @@ use taylor::{
 use sha256::Sha256Digest;
 use std::fs::{self, File};
 use std::io::BufReader;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 
 #[derive(Parser)]
 #[command(version, about)]
