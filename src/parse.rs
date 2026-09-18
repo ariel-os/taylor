@@ -1,6 +1,10 @@
+//! Parses a JSON manifest description (see [the repo README](https://github.com/schnitzm/taylor#usage)
+//! for the expected shape) into a [`crate::manifest::SuitManifest`].
+
 use std::{fs::File, io::BufReader};
 
-use serde_json::{Value, from_reader, from_value};
+use serde_bytes::ByteBuf;
+use serde_json::{Value, from_reader};
 
 use crate::{
     error::Error,
@@ -10,155 +14,194 @@ use crate::{
     },
 };
 
+/// Strips dashes and hex-decodes a UUID string into its raw 16 bytes.
+fn parse_uuid_bytes(s: &str) -> Result<Vec<u8>, Error> {
+    let stripped: String = s.chars().filter(|c| *c != '-').collect();
+    let bytes = hex::decode(stripped)
+        .map_err(|_| Error::UnsupportedParameter("Invalid UUID hex".to_string()))?;
+    if bytes.len() != 16 {
+        return Err(Error::UnsupportedParameter("UUID must be 16 bytes".to_string()));
+    }
+    Ok(bytes)
+}
+
 fn parse_suit_parameters(parse_key: &str, parse_value: &Value) -> Option<SuitParameter> {
     match parse_key {
         "vendor-id" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitVendorID(parse_value.to_string()),
+            ident: crate::manifest::SuitParametersEnum::SuitVendorID(
+                parse_uuid_bytes(parse_value.as_str()?).ok()?,
+            ),
         }),
         "class-id" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitClassID(parse_value.to_string()),
+            ident: crate::manifest::SuitParametersEnum::SuitClassID(
+                parse_uuid_bytes(parse_value.as_str()?).ok()?,
+            ),
         }),
         "image-digest" => Some(SuitParameter {
             ident: crate::manifest::SuitParametersEnum::SuitImageDigest({
-                let algorithm = match parse_value.get("algorithm") {
-                    Some(str) => String::try_from(str.as_str().unwrap())
-                        .map_err(|_| Error::UnsupportedParameter("Invalid algorithm".to_string()))
-                        .unwrap(),
-                    None => return None,
+                let algorithm = {
+                    let algo = parse_value.get("algorithm")?;
+                    algo.as_str().unwrap().to_string()
                 };
 
-                let digest = match parse_value.get("digest") {
-                    Some(str) => String::try_from(str.as_str().unwrap())
-                        .map_err(|_| Error::UnsupportedParameter("Invalid digest".to_string()))
-                        .unwrap(),
-                    None => return None,
+                let digest = {
+                    let str = parse_value.get("digest")?;
+                    hex::decode(str.as_str().unwrap())
+                .map_err(|_| Error::UnsupportedParameter("Invalid digest hex".to_string()))
+                .unwrap()
                 };
 
                 crate::manifest::SuitDigest {
-                    algorithm: algorithm,
-                    digest: digest,
+                    algorithm,
+                    digest,
                 }
             }),
         }),
         "component-slot" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitComponentSlot(parse_value.to_string()),
+            ident: crate::manifest::SuitParametersEnum::SuitComponentSlot(parse_value.as_u64()?),
         }),
         "strict-order" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitStrictOrder(parse_value.to_string()),
+            ident: crate::manifest::SuitParametersEnum::SuitStrictOrder(parse_value.as_bool()?),
         }),
         "soft-failure" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitSoftFailure(parse_value.to_string()),
+            ident: crate::manifest::SuitParametersEnum::SuitSoftFailure(parse_value.as_bool()?),
         }),
         "image-size" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitImageSize(parse_value.to_string()),
+            ident: crate::manifest::SuitParametersEnum::SuitImageSize(parse_value.as_u64()?),
         }),
         "content" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitContent(parse_value.to_string()),
+            ident: crate::manifest::SuitParametersEnum::SuitContent(
+                hex::decode(parse_value.as_str()?).ok()?,
+            ),
         }),
         "uri" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitURI(parse_value.to_string()),
+            ident: crate::manifest::SuitParametersEnum::SuitURI(parse_value.as_str()?.to_string()),
         }),
         "source-component" => Some(SuitParameter {
             ident: crate::manifest::SuitParametersEnum::SuitSourceComponent(
-                parse_value.to_string(),
+                parse_value.as_u64()?,
             ),
         }),
         "invoke-args" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitInvokeArgs(parse_value.to_string()),
+            ident: crate::manifest::SuitParametersEnum::SuitInvokeArgs(
+                hex::decode(parse_value.as_str()?).ok()?,
+            ),
         }),
         "device-id" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitDeviceID(parse_value.to_string()),
+            ident: crate::manifest::SuitParametersEnum::SuitDeviceID(
+                parse_uuid_bytes(parse_value.as_str()?).ok()?,
+            ),
+        }),
+        "fetch-arguments" => Some(SuitParameter {
+            ident: crate::manifest::SuitParametersEnum::SuitFetchArguments(
+                hex::decode(parse_value.as_str()?).ok()?,
+            ),
         }),
         _ => None,
     }
 }
 
-fn parse_suit_command(parse_key: &str, parse_value: &Value) -> Option<SuitCommand> {
-    match parse_key {
-        "suit-condition-vendor-identifier" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitConditionVendorIdentifier,
-            value: parse_value.to_string(),
-        }),
-        "suit-condition-class-identifier" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitConditionClassIdentifier,
-            value: parse_value.to_string(),
-        }),
-        "suit-condition-device-identifier" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitConditionDeviceIdentifier,
-            value: parse_value.to_string(),
-        }),
-        "suit-condition-image-match" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitConditionImageMatch,
-            value: parse_value.to_string(),
-        }),
-        "suit-condition-check-content" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitConditionCheckContent,
-            value: parse_value.to_string(),
-        }),
-        "suit-condition-component-slot" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitConditionComponentSlot,
-            value: parse_value.to_string(),
-        }),
-        "suit-condition-abort" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitConditionAbort,
-            value: parse_value.to_string(),
-        }),
-        "suit-directive-set-component-index" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitDirectiveSetComponentIndex,
-            value: parse_value.to_string(),
-        }),
-        "suit-directive-try-each" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitDirectiveTryEach,
-            value: parse_value.to_string(),
-        }),
-        "suit-directive-override-parameters" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitDirectiveOverrideParameters({
-                let mut buf = Vec::new();
-                for (key, value) in parse_value
-                    .as_object()
-                    .ok_or_else(|| "No valid suit parameter".to_string())
-                    .unwrap()
-                {
-                    buf.push(
-                        parse_suit_parameters(key, value)
-                            .ok_or_else(|| "Invalid parameter".to_string())
-                            .unwrap(),
-                    )
+fn parse_suit_command(parse_key: &str, parse_value: &Value) -> Result<SuitCommand, Error> {
+    let invalid = |what: &str| Error::UnsupportedCommand(format!("Invalid {} argument", what));
+
+    let ident = match parse_key {
+        "suit-condition-vendor-identifier" => SuitCommandEnum::SuitConditionVendorIdentifier(
+            parse_value.as_u64().ok_or_else(|| invalid(parse_key))?,
+        ),
+        "suit-condition-class-identifier" => SuitCommandEnum::SuitConditionClassIdentifier(
+            parse_value.as_u64().ok_or_else(|| invalid(parse_key))?,
+        ),
+        "suit-condition-device-identifier" => SuitCommandEnum::SuitConditionDeviceIdentifier(
+            parse_value.as_u64().ok_or_else(|| invalid(parse_key))?,
+        ),
+        "suit-condition-image-match" => SuitCommandEnum::SuitConditionImageMatch(
+            parse_value.as_u64().ok_or_else(|| invalid(parse_key))?,
+        ),
+        "suit-condition-check-content" => SuitCommandEnum::SuitConditionCheckContent(
+            parse_value.as_u64().ok_or_else(|| invalid(parse_key))?,
+        ),
+        "suit-condition-component-slot" => SuitCommandEnum::SuitConditionComponentSlot(
+            parse_value.as_u64().ok_or_else(|| invalid(parse_key))?,
+        ),
+        "suit-condition-abort" => SuitCommandEnum::SuitConditionAbort(
+            parse_value.as_u64().ok_or_else(|| invalid(parse_key))?,
+        ),
+        "suit-directive-set-component-index" => SuitCommandEnum::SuitDirectiveSetComponentIndex(
+            parse_value.as_u64().ok_or_else(|| invalid(parse_key))?,
+        ),
+        "suit-directive-try-each" => {
+            let branches_value = parse_value
+                .as_array()
+                .ok_or_else(|| invalid(parse_key))?;
+
+            let mut else_nil = false;
+            let mut branches = Vec::new();
+            for branch_value in branches_value {
+                if branch_value.is_null() {
+                    else_nil = true;
+                    continue;
                 }
-                buf
-            }),
-            value: parse_value.to_string(),
-        }),
-        "suit-directive-fetch" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitDirectiveFetch,
-            value: parse_value.to_string(),
-        }),
-        "suit-directive-copy" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitDirectiveCopy,
-            value: parse_value.to_string(),
-        }),
-        "suit-directive-write" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitDirectiveWrite,
-            value: parse_value.to_string(),
-        }),
-        "suit-directive-invoke" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitDirectiveInvoke,
-            value: parse_value.to_string(),
-        }),
-        "suit-directive-run-sequence" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitDirectiveRunSequence,
-            value: parse_value.to_string(),
-        }),
-        "suit-directive-swap" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitDirectiveSwap,
-            value: parse_value.to_string(),
-        }),
-        "suit-command-custom" => Some(SuitCommand {
-            ident: SuitCommandEnum::SuitCommandCustom,
-            value: parse_value.to_string(),
-        }),
-        _ => None,
+                branches.push(parse_command_sequence(branch_value)?);
+            }
+            SuitCommandEnum::SuitDirectiveTryEach(branches, else_nil)
+        }
+        "suit-directive-override-parameters" => {
+            let mut buf = Vec::new();
+            for (key, value) in parse_value
+                .as_object()
+                .ok_or_else(|| invalid(parse_key))?
+            {
+                buf.push(
+                    parse_suit_parameters(key, value)
+                        .ok_or_else(|| Error::UnsupportedParameter("Invalid parameter".to_string()))?,
+                )
+            }
+            SuitCommandEnum::SuitDirectiveOverrideParameters(buf)
+        }
+        "suit-directive-fetch" => SuitCommandEnum::SuitDirectiveFetch(
+            parse_value.as_u64().ok_or_else(|| invalid(parse_key))?,
+        ),
+        "suit-directive-copy" => SuitCommandEnum::SuitDirectiveCopy(
+            parse_value.as_u64().ok_or_else(|| invalid(parse_key))?,
+        ),
+        "suit-directive-write" => SuitCommandEnum::SuitDirectiveWrite(
+            parse_value.as_u64().ok_or_else(|| invalid(parse_key))?,
+        ),
+        "suit-directive-invoke" => SuitCommandEnum::SuitDirectiveInvoke(
+            parse_value.as_u64().ok_or_else(|| invalid(parse_key))?,
+        ),
+        "suit-directive-run-sequence" => {
+            SuitCommandEnum::SuitDirectiveRunSequence(parse_command_sequence(parse_value)?)
+        }
+        "suit-directive-swap" => SuitCommandEnum::SuitDirectiveSwap(
+            parse_value.as_u64().ok_or_else(|| invalid(parse_key))?,
+        ),
+        "suit-command-custom" => SuitCommandEnum::SuitCommandCustom(parse_value.to_string()),
+        _ => return Err(Error::UnsupportedCommand(format!("Unknown command {}", parse_key))),
+    };
+
+    Ok(SuitCommand { ident })
+}
+
+/// Parses a command sequence encoded as a JSON array of single-key command objects,
+/// e.g. `[{"suit-directive-set-component-index": 0}, {"suit-directive-fetch": 2}]`.
+fn parse_command_sequence(parse_value: &Value) -> Result<Vec<SuitCommand>, Error> {
+    let commands = parse_value
+        .as_array()
+        .ok_or_else(|| Error::UnsupportedCommand("Invalid command sequence".to_string()))?;
+
+    let mut buf = Vec::new();
+    for command in commands {
+        let obj = command
+            .as_object()
+            .ok_or_else(|| Error::UnsupportedCommand("Invalid command entry".to_string()))?;
+        let (key, value) = obj
+            .iter()
+            .next()
+            .ok_or_else(|| Error::UnsupportedCommand("Empty command entry".to_string()))?;
+        buf.push(parse_suit_command(key, value)?);
     }
+    Ok(buf)
 }
 
 // Parse suit command sequence (not shared), later distinction between severable and unseverable possible, maybe only relevant for encoding module
@@ -168,7 +211,7 @@ fn parse_suit_command_sequence(
 ) -> Option<SuitCommandSequence> {
     match parse_key {
         "payload-fetch" => {
-            let suit_commands = parse_suit_command_sequence_identifier(parse_value);
+            let suit_commands = parse_command_sequence(parse_value).ok()?;
             let command_seq = SuitCommandSequence {
                 sequence: SuitCommandSequenceEnum::SuitPayloadFetch,
                 actions: suit_commands,
@@ -176,7 +219,7 @@ fn parse_suit_command_sequence(
             Some(command_seq)
         }
         "payload-installation" => {
-            let suit_commands = parse_suit_command_sequence_identifier(parse_value);
+            let suit_commands = parse_command_sequence(parse_value).ok()?;
             let command_seq = SuitCommandSequence {
                 sequence: SuitCommandSequenceEnum::SuitInstall,
                 actions: suit_commands,
@@ -184,7 +227,7 @@ fn parse_suit_command_sequence(
             Some(command_seq)
         }
         "image-validation" => {
-            let suit_commands = parse_suit_command_sequence_identifier(parse_value);
+            let suit_commands = parse_command_sequence(parse_value).ok()?;
             let command_seq = SuitCommandSequence {
                 sequence: SuitCommandSequenceEnum::SuitValidate,
                 actions: suit_commands,
@@ -192,7 +235,7 @@ fn parse_suit_command_sequence(
             Some(command_seq)
         }
         "suit-load" => {
-            let suit_commands = parse_suit_command_sequence_identifier(parse_value);
+            let suit_commands = parse_command_sequence(parse_value).ok()?;
             let command_seq = SuitCommandSequence {
                 sequence: SuitCommandSequenceEnum::SuitLoad,
                 actions: suit_commands,
@@ -200,7 +243,7 @@ fn parse_suit_command_sequence(
             Some(command_seq)
         }
         "suit-invoke" => {
-            let suit_commands = parse_suit_command_sequence_identifier(parse_value);
+            let suit_commands = parse_command_sequence(parse_value).ok()?;
             let command_seq = SuitCommandSequence {
                 sequence: SuitCommandSequenceEnum::SuitInvoke,
                 actions: suit_commands,
@@ -212,22 +255,14 @@ fn parse_suit_command_sequence(
     }
 }
 
-fn parse_suit_command_sequence_identifier(parse_value: &Value) -> Vec<SuitCommand> {
-    let mut seq_buf = Vec::new();
-    for (key, value) in parse_value
-        .as_object()
-        .ok_or_else(|| "No shared sequence. Suit manifest needs a shared sequence".to_string())
-        .unwrap()
-    {
-        seq_buf.push(
-            parse_suit_command(&key.to_string(), value)
-                .ok_or_else(|| Error::UnsupportedCommand("Invalid shared sequence command".to_string()))
-                .unwrap(),
-        );
-    }
-    return seq_buf;
-}
 
+/// Reads a JSON manifest description from `reader` and builds a [`SuitManifest`].
+///
+/// # Panics
+///
+/// Panics (rather than returning `Err`) on several classes of malformed input; only a subset
+/// of validation currently returns [`Error`]. Treat this as a CLI-oriented parser, not a
+/// hardened one.
 pub fn parse(reader: &mut BufReader<File>) -> Result<SuitManifest, Error> {
     let data: Value = from_reader(reader).expect("JSON-Daten konnten nicht verarbeitet werden");
 
@@ -253,38 +288,46 @@ pub fn parse(reader: &mut BufReader<File>) -> Result<SuitManifest, Error> {
 
     let suit_common = data
         .get("suit-common")
-        .ok_or_else(|| "No command sequence. Suit manifest needs a command sequence")
+        .ok_or("No command sequence. Suit manifest needs a command sequence")
         .unwrap();
 
     let components_value = suit_common
         .get("suit-components")
-        .ok_or_else(|| "No components. Suit manifest need at least one component".to_string())
+        .ok_or("No components. Suit manifest need at least one component")
         .unwrap();
 
-    // Directly deserialize the nested structure
-    let components: Vec<Vec<String>> = from_value(components_value.clone()).unwrap();
+    // Component identifiers are hex-encoded bstr segments, decoded generically (no special
+    // per-label knowledge needed).
+    let components: Vec<Vec<ByteBuf>> = components_value
+        .as_array()
+        .ok_or_else(|| "Invalid suit-components".to_string())
+        .unwrap()
+        .iter()
+        .map(|segments| {
+            segments
+                .as_array()
+                .ok_or_else(|| "Invalid component identifier".to_string())
+                .unwrap()
+                .iter()
+                .map(|segment| {
+                    ByteBuf::from(
+                        hex::decode(segment.as_str().expect("component segment must be a string"))
+                            .expect("component segment must be valid hex"),
+                    )
+                })
+                .collect()
+        })
+        .collect();
 
     // Parse shared sequence
 
-    let mut shared_seq_buf = Vec::new();
+    let shared_seq_buf = parse_command_sequence(&suit_common["suit-shared-sequence"])
+        .map_err(|_| Error::UnsupportedCommand("Invalid shared sequence".to_string()))?;
 
-    for (key, value) in suit_common["suit-shared-sequence"]
-        .as_object()
-        .ok_or_else(|| "No shared sequence. Suit manifest needs a shared sequence".to_string())
-        .unwrap()
-    {
-        // Shared sequence has commands directly
-        shared_seq_buf.push(
-            parse_suit_command(&key.to_string(), value)
-                .ok_or_else(|| Error::UnsupportedCommand("Invalid shared sequence command".to_string()))
-                .unwrap(),
-        );
-    }
-    
     // Create suit common out of components & shared_sequence
 
     let suit_common = SuitCommon {
-        components: components,
+        components,
         shared_sequence: shared_seq_buf,
     };
 
@@ -310,9 +353,9 @@ pub fn parse(reader: &mut BufReader<File>) -> Result<SuitManifest, Error> {
     }
 
     Ok(SuitManifest {
-        version: version,
-        sequence_number: sequence_number,
-        suit_common: suit_common,
+        version,
+        sequence_number,
+        suit_common,
         sequence: seq_buf,
     })
 }
