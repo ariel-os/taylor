@@ -1,6 +1,6 @@
 use clap::Parser;
+use embroider::{Algorithm, Error as EmbroiderError, Signer};
 use taylor::manifest::{SuitAuthentication, SuitDigest, SuitEnvelope};
-use taylor::sign::sign;
 use taylor::{
     encode::{encode_envelope, encode_manifest},
     parse::parse,
@@ -8,7 +8,7 @@ use taylor::{
 use sha256::Sha256Digest;
 use std::fs::{self, File};
 use std::io::BufReader;
-use std::path::{PathBuf};
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -16,12 +16,19 @@ struct Cli {
     /// Path to the input JSON manifest.
     json_path: Option<PathBuf>,
 
-    /// Path to the signing key. Providing this enables signing.
+    /// Path to a PEM-encoded EC private key (P-256/ES256 or P-384/ES384). Providing this
+    /// signs the envelope with a COSE_Sign1 authentication block.
+    #[arg(short = 'k', long = "key", value_name = "PEM_FILE")]
     key_path: Option<PathBuf>,
 
     /// Directory where the generated CBOR envelope is written.
     #[arg(short, long, value_name = "DIR")]
     output: Option<PathBuf>,
+}
+
+/// Loads a signing key, trying ES256 then ES384 since the PEM itself doesn't name its curve.
+fn load_signer(pem: &str) -> Result<Signer, EmbroiderError> {
+    Signer::from_pem(pem, Algorithm::Es256).or_else(|_| Signer::from_pem(pem, Algorithm::Es384))
 }
 
 fn main() {
@@ -33,7 +40,6 @@ fn main() {
     let has_json_path = json_path.is_some();
     let should_sign = key_path.is_some();
     let json_path = json_path.unwrap_or_else(|| PathBuf::from("examples/test.json"));
-    let key_path = key_path.unwrap_or_else(|| PathBuf::from("key.pem"));
 
     if should_sign || has_json_path {
         println!("Using path: {json_path:?}");
@@ -54,7 +60,7 @@ fn main() {
     let digest_hex = manifest_cbor.digest();
     let digest = hex::decode(&digest_hex).expect("sha256 digest hex must be valid");
     println!("digest string :: {:?}", digest_hex);
-    // SUIT_Authentication allows zero auth blocks; sign() adds a real one when signing
+    // SUIT_Authentication allows zero auth blocks; embroider adds a real one when signing
     let suit_auth = SuitAuthentication {
         digest: SuitDigest {
             algorithm: "sha256".to_owned(),
@@ -63,17 +69,16 @@ fn main() {
         auth_blocks: Vec::new(),
     };
 
-    let mut envelope = SuitEnvelope {
+    let envelope = SuitEnvelope {
         auth_block: suit_auth,
         manifest,
     };
 
-    // Yet to be implemented
-    if should_sign {
-        envelope = sign(envelope, &key_path);
-    }
+    let mut envelope_cbor = encode_envelope(&envelope);
 
-    let envelope_cbor = encode_envelope(&envelope);
+    if let Some(key_path) = key_path.as_deref() {
+        envelope_cbor = sign_with_key(&envelope_cbor, key_path);
+    }
 
     println!("CBOR Output of Envelope: {}", hex::encode(&envelope_cbor));
 
@@ -87,4 +92,14 @@ fn main() {
         fs::write(&out_path, &envelope_cbor).expect("failed to write CBOR output file");
         println!("Wrote CBOR output to: {out_path:?}");
     }
+}
+
+/// Reads the PEM key at `key_path` and returns `envelope_cbor` with a COSE_Sign1 block appended.
+fn sign_with_key(envelope_cbor: &[u8], key_path: &Path) -> Vec<u8> {
+    let pem = fs::read_to_string(key_path)
+        .unwrap_or_else(|e| panic!("failed to read key file {key_path:?}: {e}"));
+    let signer = load_signer(&pem)
+        .unwrap_or_else(|e| panic!("failed to parse signing key {key_path:?} (tried ES256/ES384): {e}"));
+    embroider::sign_envelope(envelope_cbor, &signer)
+        .unwrap_or_else(|e| panic!("failed to sign envelope: {e}"))
 }
