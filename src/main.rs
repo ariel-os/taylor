@@ -1,5 +1,5 @@
 use clap::Parser;
-use embroider::{Algorithm, Error as EmbroiderError, Signer};
+use brody::{Algorithm, Error as BrodyError, Signer};
 use taylor::manifest::{SuitAuthentication, SuitDigest, SuitEnvelope};
 use taylor::{
     encode::{encode_envelope, encode_manifest},
@@ -27,7 +27,7 @@ struct Cli {
 }
 
 /// Loads a signing key, trying ES256 then ES384 since the PEM itself doesn't name its curve.
-fn load_signer(pem: &str) -> Result<Signer, EmbroiderError> {
+fn load_signer(pem: &str) -> Result<Signer, BrodyError> {
     Signer::from_pem(pem, Algorithm::Es256).or_else(|_| Signer::from_pem(pem, Algorithm::Es384))
 }
 
@@ -60,7 +60,7 @@ fn main() {
     let digest_hex = manifest_cbor.digest();
     let digest = hex::decode(&digest_hex).expect("sha256 digest hex must be valid");
     println!("digest string :: {:?}", digest_hex);
-    // SUIT_Authentication allows zero auth blocks; embroider adds a real one when signing
+    // SUIT_Authentication allows zero auth blocks; brody adds a real one when signing
     let suit_auth = SuitAuthentication {
         digest: SuitDigest {
             algorithm: "sha256".to_owned(),
@@ -100,6 +100,6 @@ fn sign_with_key(envelope_cbor: &[u8], key_path: &Path) -> Vec<u8> {
         .unwrap_or_else(|e| panic!("failed to read key file {key_path:?}: {e}"));
     let signer = load_signer(&pem)
         .unwrap_or_else(|e| panic!("failed to parse signing key {key_path:?} (tried ES256/ES384): {e}"));
-    embroider::sign_envelope(envelope_cbor, &signer)
+    brody::sign_envelope(envelope_cbor, &signer)
         .unwrap_or_else(|e| panic!("failed to sign envelope: {e}"))
 }
