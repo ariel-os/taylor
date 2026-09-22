@@ -3,8 +3,8 @@
 //!
 //! The pipeline is: [`parse::parse`] reads a JSON file into a [`manifest::SuitManifest`],
 //! [`encode::encode_manifest`] and [`encode::encode_envelope`] serialize it (and its
-//! wrapping [`manifest::SuitEnvelope`]) to CBOR, and [`sign::sign`] adds a COSE
-//! authentication block (not yet implemented).
+//! wrapping [`manifest::SuitEnvelope`]) to CBOR, and the `brody` crate adds a COSE
+//! authentication block when signing is requested.
 
 #![warn(missing_docs)]
 
