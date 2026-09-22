@@ -1,6 +1,6 @@
 use clap::Parser;
-use brody::{Algorithm, Error as BrodyError, Signer};
 use taylor::manifest::{SuitAuthentication, SuitDigest, SuitEnvelope};
+use taylor::sign::sign_envelope_with_key;
 use taylor::{
     encode::{encode_envelope, encode_manifest},
     parse::parse,
@@ -8,7 +8,7 @@ use taylor::{
 use sha256::Sha256Digest;
 use std::fs::{self, File};
 use std::io::BufReader;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -24,11 +24,6 @@ struct Cli {
     /// Directory where the generated CBOR envelope is written.
     #[arg(short, long, value_name = "DIR")]
     output: Option<PathBuf>,
-}
-
-/// Loads a signing key, trying ES256 then ES384 since the PEM itself doesn't name its curve.
-fn load_signer(pem: &str) -> Result<Signer, BrodyError> {
-    Signer::from_pem(pem, Algorithm::Es256).or_else(|_| Signer::from_pem(pem, Algorithm::Es384))
 }
 
 fn main() {
@@ -77,7 +72,8 @@ fn main() {
     let mut envelope_cbor = encode_envelope(&envelope);
 
     if let Some(key_path) = key_path.as_deref() {
-        envelope_cbor = sign_with_key(&envelope_cbor, key_path);
+        envelope_cbor = sign_envelope_with_key(&envelope_cbor, key_path)
+            .unwrap_or_else(|e| panic!("failed to sign envelope with key {key_path:?}: {e}"));
     }
 
     println!("CBOR Output of Envelope: {}", hex::encode(&envelope_cbor));
@@ -94,12 +90,3 @@ fn main() {
     }
 }
 
-/// Reads the PEM key at `key_path` and returns `envelope_cbor` with a COSE_Sign1 block appended.
-fn sign_with_key(envelope_cbor: &[u8], key_path: &Path) -> Vec<u8> {
-    let pem = fs::read_to_string(key_path)
-        .unwrap_or_else(|e| panic!("failed to read key file {key_path:?}: {e}"));
-    let signer = load_signer(&pem)
-        .unwrap_or_else(|e| panic!("failed to parse signing key {key_path:?} (tried ES256/ES384): {e}"));
-    brody::sign_envelope(envelope_cbor, &signer)
-        .unwrap_or_else(|e| panic!("failed to sign envelope: {e}"))
-}

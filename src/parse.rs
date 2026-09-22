@@ -1,4 +1,4 @@
-//! Parses a JSON manifest description (see [the repo README](https://github.com/schnitzm/taylor#usage)
+//! Parses a JSON manifest description (see [the repo README](https://github.com/ariel-os/taylor#usage)
 //! for the expected shape) into a [`crate::manifest::SuitManifest`].
 
 use std::{fs::File, io::BufReader};
@@ -205,6 +205,12 @@ fn parse_command_sequence(parse_value: &Value) -> Result<Vec<SuitCommand>, Error
 }
 
 // Parse suit command sequence (not shared), later distinction between severable and unseverable possible, maybe only relevant for encoding module
+//
+// NOTE: the accepted top-level `sequence` object keys are `payload-fetch`,
+// `payload-installation`, `image-validation`, `suit-load`, `suit-invoke` - not the CDDL
+// phase names (`suit-payload-fetch`, `suit-install`, `suit-validate`). Any other key is
+// silently dropped instead of erroring (see the `_ => None` arm below, surfaced by the
+// caller as `Error::UnsupportedCommand`).
 fn parse_suit_command_sequence(
     parse_key: &str,
     parse_value: &Value,
@@ -263,6 +269,33 @@ fn parse_suit_command_sequence(
 /// Panics (rather than returning `Err`) on several classes of malformed input; only a subset
 /// of validation currently returns [`Error`]. Treat this as a CLI-oriented parser, not a
 /// hardened one.
+///
+/// # Examples
+///
+/// ```
+/// use std::fs::{self, File};
+/// use std::io::BufReader;
+/// use taylor::parse::parse;
+///
+/// let path = std::env::temp_dir().join("taylor_parse_doctest.json");
+/// fs::write(&path, r#"{
+///     "version": 1,
+///     "sequence-number": 1,
+///     "suit-common": {
+///         "suit-components": [["00"]],
+///         "suit-shared-sequence": []
+///     },
+///     "sequence": {}
+/// }"#).unwrap();
+///
+/// let mut reader = BufReader::new(File::open(&path).unwrap());
+/// let manifest = parse(&mut reader).unwrap();
+/// assert_eq!(manifest.version, 1);
+/// assert_eq!(manifest.sequence_number, 1);
+/// assert!(manifest.sequence.is_empty());
+///
+/// fs::remove_file(&path).unwrap();
+/// ```
 pub fn parse(reader: &mut BufReader<File>) -> Result<SuitManifest, Error> {
     let data: Value = from_reader(reader).expect("JSON-Daten konnten nicht verarbeitet werden");
 
