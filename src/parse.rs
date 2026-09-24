@@ -1,7 +1,7 @@
 //! Parses a JSON manifest description (see [the repo README](https://github.com/ariel-os/taylor#usage)
 //! for the expected shape) into a [`crate::manifest::SuitManifest`].
 
-use std::{fs::File, io::BufReader};
+use std::io::Read;
 
 use serde_bytes::ByteBuf;
 use serde_json::{Value, from_reader};
@@ -296,7 +296,7 @@ fn parse_suit_command_sequence(
 ///
 /// fs::remove_file(&path).unwrap();
 /// ```
-pub fn parse(reader: &mut BufReader<File>) -> Result<SuitManifest, Error> {
+pub fn parse<R: Read>(reader: &mut R) -> Result<SuitManifest, Error> {
     let data: Value = from_reader(reader).expect("JSON-Daten konnten nicht verarbeitet werden");
 
     // Critical Metadata
