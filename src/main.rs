@@ -171,7 +171,12 @@ fn write_output(out_dir: &std::path::Path, source_path: &std::path::Path, extens
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("manifest");
-    let out_path = out_dir.join(format!("{file_stem}.{extension}"));
+    let file_name = if file_stem.ends_with(&format!(".{extension}")) {
+        file_stem.to_owned()
+    } else {
+        format!("{file_stem}.{extension}")
+    };
+    let out_path = out_dir.join(file_name);
     fs::write(&out_path, contents).expect("failed to write output file");
     println!("Wrote output to: {out_path:?}");
 }
