@@ -180,5 +180,3 @@ fn write_output(out_dir: &std::path::Path, source_path: &std::path::Path, extens
     fs::write(&out_path, contents).expect("failed to write output file");
     println!("Wrote output to: {out_path:?}");
 }
-
-
