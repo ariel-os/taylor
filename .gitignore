@@ -1,5 +1,6 @@
 /target
-Cargo.lock
+*.lock
 *.cbor
 *.bin
-out
+/out
+.vscode

@@ -1,0 +1,8 @@
+{
+    "sequence_number": 1,
+    "vendor_id": "67e55044-10b1-426f-9247-bb680e5fe0c8",
+    "class_id": "69e55044-10b1-426f-2974-bb680e5fedc8",
+    "image_size": 1024,
+    "uri": "https://example.com/firmware.bin",
+    "digest": "c12efb651dc800465d80264343852c304c4dcea2da82828d8824df7638628d17"
+}
