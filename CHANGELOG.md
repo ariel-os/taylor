@@ -27,3 +27,17 @@
 - Added runnable doc examples (doctests) to `parse::parse`, `encode::encode_manifest`,
   `encode::encode_envelope`, and the crate root; `cargo doc --no-deps` excludes
   dependency documentation.
+- Added `templates/manifest.json.jinja`, a `minijinja` template for the manifest JSON,
+  and a runnable example (`examples/render_template.rs`) rendering it end-to-end into
+  an unsigned CBOR envelope.
+- Generalized `parse::parse` to accept any `std::io::Read`, not just a `BufReader<File>`.
+- Added a `taylor::template` module (`parse_var`, `build_context`, `render`) for
+  rendering a `minijinja` template into manifest JSON from a variable context, failing
+  fast with a clear error if the template references a variable that wasn't supplied.
+- Added `--template <PATH>`, `--var KEY=VALUE`, `--vars-file <PATH>`, and
+  `--render-only` CLI flags so a template path and its variables can be supplied on the
+  command line (e.g. from CI), for build-pipeline integration.
+- Added integration tests (`tests/templating.rs`) covering byte-identical output
+  between the templated and direct-JSON paths, `--vars-file`/`--var` override
+  precedence, missing-variable and malformed-`--var` failure modes, and rejection of
+  `--var`/`--vars-file`/`--render-only` without `--template`.

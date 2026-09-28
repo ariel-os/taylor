@@ -27,6 +27,44 @@ cargo run -- <path_to_json> --key <path_to_pem>
 Pass `-o`/`--output <dir>` to write the generated CBOR envelope to `<dir>/<stem>.cbor`
 (`<stem>` is the input JSON file's stem). Without it, the CBOR is only printed as hex.
 
+### Templating
+
+For build pipelines that need to inject values (vendor/class IDs, version numbers,
+digests, ...) at build time instead of committing them into a static JSON file, pass a
+[minijinja](https://docs.rs/minijinja) template with `--template` instead of a plain JSON
+path, along with the variables it needs:
+
+```sh
+cargo run -- \
+  --template templates/manifest.jinja \
+  --var sequence_number=1 \
+  --var vendor_id=67e55044-10b1-426f-9247-bb680e5fe0c8 \
+  --var class_id=69e55044-10b1-426f-2974-bb680e5fedc8 \
+  --var image_size=1024 \
+  --var digest=c12efb651dc800465d80264343852c304c4dcea2da82828d8824df7638628d17 \
+  --var uri=https://example.com/firmware.bin \
+  --output out/
+```
+
+- `--var KEY=VALUE` sets a single variable (repeatable); values are inferred as
+  bool/int/float, falling back to a string.
+- `--vars-file <PATH>` loads a JSON object as the base context; `--var` overrides take
+  precedence on key collisions, so CI-provided values can override defaults from a
+  checked-in file:
+
+  ```sh
+  cargo run -- --template templates/manifest.jinja \
+    --vars-file build/vars.json \
+    --var sequence_number="$CI_PIPELINE_IID"
+  ```
+- `--render-only` prints the rendered JSON (or writes it to `--output` as `<stem>.json`)
+  and exits, without parsing/encoding/signing it — useful for inspecting or unit-testing
+  the rendered manifest in isolation.
+- `--template` is mutually exclusive with a plain JSON path, and `--var`/`--vars-file`/
+  `--render-only` all require `--template`.
+- Rendering fails fast, before producing any output, if the template references a
+  variable that wasn't supplied.
+
 ## How to add fields
 
  - Add the structure into the manifest.rs file
@@ -43,7 +81,8 @@ cargo test
 
 Runs unit tests, the signing integration tests in [`tests/signing.rs`](tests/signing.rs)
 (which spawn the built binary and cryptographically verify the resulting `COSE_Sign1`
-blocks), and all doc-tests.
+blocks), the templating integration tests in
+[`tests/templating.rs`](tests/templating.rs), and all doc-tests.
 ## Documentation
 
 ```sh
