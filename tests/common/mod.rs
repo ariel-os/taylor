@@ -42,12 +42,12 @@ pub fn json_path() -> PathBuf {
     manifest_dir().join("examples/test.json")
 }
 
-/// Path to the checked-in Jinja template (`templates/manifest.json.jinja`).
+/// Path to the checked-in Jinja template (`templates/manifest.jinja`).
 pub fn template_path() -> PathBuf {
-    manifest_dir().join("templates/manifest.json.jinja")
+    manifest_dir().join("templates/manifest.jinja")
 }
 
-/// The full set of `--var KEY=VALUE` CLI args that render `templates/manifest.json.jinja` into
+/// The full set of `--var KEY=VALUE` CLI args that render `templates/manifest.jinja` into
 /// exactly `examples/test.json`'s content. Kept alongside [`matching_template_context`] so the
 /// CLI-flag and library-context representations of the same values can't silently drift apart.
 pub const MATCHING_VAR_ARGS: &[&str] = &[
@@ -66,7 +66,7 @@ pub const MATCHING_VAR_ARGS: &[&str] = &[
 ];
 
 /// The same values as [`MATCHING_VAR_ARGS`], as a `serde_json` context for rendering
-/// `templates/manifest.json.jinja` directly through [`taylor::template::render`].
+/// `templates/manifest.jinja` directly through [`taylor::template::render`].
 pub fn matching_template_context() -> serde_json::Value {
     serde_json::json!({
         "sequence_number": 1,
