@@ -365,6 +365,27 @@ fn encode_cbor_bstr_header(len: usize) -> Vec<u8> {
 /// Encodes `manifest` as a `bstr .cbor SUIT_Manifest`: its CBOR map, prefixed with a bstr
 /// length header. The digest embedded in the envelope's `SuitAuthentication` is computed
 /// over these exact bytes.
+///
+/// # Examples
+///
+/// ```
+/// use serde_bytes::ByteBuf;
+/// use taylor::encode::encode_manifest;
+/// use taylor::manifest::{SuitCommon, SuitManifest};
+///
+/// let manifest = SuitManifest {
+///     version: 1,
+///     sequence_number: 1,
+///     suit_common: SuitCommon {
+///         components: vec![vec![ByteBuf::from(vec![0x00])]],
+///         shared_sequence: vec![],
+///     },
+///     sequence: vec![],
+/// };
+///
+/// let cbor = encode_manifest(&manifest);
+/// assert!(!cbor.is_empty());
+/// ```
 pub fn encode_manifest(manifest: &SuitManifest) -> Vec<u8> {
     let mut manifest_bytes = Vec::new();
 
@@ -377,6 +398,38 @@ pub fn encode_manifest(manifest: &SuitManifest) -> Vec<u8> {
 }
 
 /// Encodes `envelope` as a tag-107 `SUIT_Envelope` (per the IANA CBOR tag registry).
+///
+/// # Examples
+///
+/// ```
+/// use serde_bytes::ByteBuf;
+/// use taylor::encode::encode_envelope;
+/// use taylor::manifest::{
+///     SuitAuthentication, SuitCommon, SuitDigest, SuitEnvelope, SuitManifest,
+/// };
+///
+/// let manifest = SuitManifest {
+///     version: 1,
+///     sequence_number: 1,
+///     suit_common: SuitCommon {
+///         components: vec![vec![ByteBuf::from(vec![0x00])]],
+///         shared_sequence: vec![],
+///     },
+///     sequence: vec![],
+/// };
+///
+/// let envelope = SuitEnvelope {
+///     auth_block: SuitAuthentication {
+///         digest: SuitDigest { algorithm: "sha256".to_string(), digest: vec![0u8; 32] },
+///         auth_blocks: vec![],
+///     },
+///     manifest,
+/// };
+///
+/// let cbor = encode_envelope(&envelope);
+/// // `0xd8 0x6b` is the two-byte encoding of CBOR tag 107 (SUIT_Envelope).
+/// assert_eq!(&cbor[..2], &[0xd8, 0x6b]);
+/// ```
 pub fn encode_envelope(envelope: &SuitEnvelope) -> Vec<u8> {
     let mut encoded = Vec::new();
 
