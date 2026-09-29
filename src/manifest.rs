@@ -107,6 +107,9 @@ pub enum SuitCommandEnum {
     SuitDirectiveRunSequence(Vec<SuitCommand>),
     /// Swap the current component with another.
     SuitDirectiveSwap(u64),
+    /// Assert the current component's version compares as required against
+    /// `suit-parameter-version` (`suit-condition-version`, code 28).
+    SuitConditionVersion(u64),
     // Not spec-conformant: custom commands need a per-command vendor-defined nint code,
     // which conflicts with the no-vendor-lock-in requirement. Kept minimal, out of scope.
     /// Non-spec-conformant escape hatch for ad hoc commands; not portable.
@@ -182,4 +185,32 @@ pub enum SuitParametersEnum {
     SuitDeviceID(Vec<u8>),
     /// Arguments passed when fetching the component.
     SuitFetchArguments(Vec<u8>),
+    /// Version comparison checked by `suit-condition-version` (`suit-parameter-version`, code 28).
+    SuitVersion(SuitVersionMatch),
+}
+
+/// `SUIT_Parameter_Version_Match = [comparison-type, SUIT_Condition_Version_Comparison_Value]`.
+#[derive(Debug, Deserialize)]
+pub struct SuitVersionMatch {
+    /// How `value` relates to the component's asserted version.
+    pub comparison: VersionComparisonType,
+    /// `SUIT_Condition_Version_Comparison_Value`: version as a sequence of integers,
+    /// e.g. `[1, 2, 3]` for `1.2.3`; a negative entry (-1/-2/-3) marks a
+    /// release-candidate/beta/alpha pre-release and must not appear as the first element.
+    pub value: Vec<i64>,
+}
+
+/// `SUIT_Condition_Version_Comparison_Types`.
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub enum VersionComparisonType {
+    /// Component version must be greater than `value`.
+    Greater,
+    /// Component version must be greater than or equal to `value`.
+    GreaterOrEqual,
+    /// Component version must equal `value`.
+    Equal,
+    /// Component version must be less than or equal to `value`.
+    LesserOrEqual,
+    /// Component version must be less than `value`.
+    Lesser,
 }

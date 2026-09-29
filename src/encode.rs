@@ -7,8 +7,8 @@ use crate::manifest::{
 };
 use ciborium::ser::into_writer;
 use serde::{
-    Serialize,
     ser::{self, SerializeMap, SerializeSeq, SerializeTuple},
+    Serialize,
 };
 use serde_bytes::ByteBuf;
 
@@ -158,8 +158,32 @@ impl SuitParameter {
             crate::manifest::SuitParametersEnum::SuitFetchArguments(bytes) => {
                 map.serialize_entry(&25u8, &ByteBuf::from(bytes.clone()))?;
             }
+            crate::manifest::SuitParametersEnum::SuitVersion(version_match) => {
+                map.serialize_entry(&28u8, &encode_to_cbor(version_match))?;
+            }
         }
         Ok(())
+    }
+}
+
+/// `SUIT_Parameter_Version_Match = [comparison-type, SUIT_Condition_Version_Comparison_Value]`.
+impl Serialize for crate::manifest::SuitVersionMatch {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use crate::manifest::VersionComparisonType::*;
+        let comparison_type: i8 = match self.comparison {
+            Greater => 1,
+            GreaterOrEqual => 2,
+            Equal => 3,
+            LesserOrEqual => 4,
+            Lesser => 5,
+        };
+        let mut s = serializer.serialize_tuple(2)?;
+        s.serialize_element(&comparison_type)?;
+        s.serialize_element(&self.value)?;
+        s.end()
     }
 }
 
@@ -288,6 +312,10 @@ impl SuitCommand {
                 seq.serialize_element(&31u8)?;
                 seq.serialize_element(v)?;
             }
+            SuitConditionVersion(v) => {
+                seq.serialize_element(&28u8)?;
+                seq.serialize_element(v)?;
+            }
             // Not spec-conformant (see manifest.rs) - kept minimal/out of scope.
             SuitCommandCustom(v) => {
                 seq.serialize_element(&9u8)?;
@@ -409,4 +437,101 @@ pub fn encode_envelope(envelope: &SuitEnvelope) -> Vec<u8> {
     encoded.extend_from_slice(&[0xD8, 0x6B]);
     into_writer(envelope, &mut encoded).unwrap();
     encoded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::manifest::{
+        SuitCommandEnum, SuitParametersEnum, SuitVersionMatch, VersionComparisonType,
+    };
+
+    /// Known-answer test, independently cross-checked with Python's `cbor2`
+    /// (`cbor2.dumps((-16, digest_bytes))`). Guards the COSE algorithm-id mapping
+    /// (`sha256` -> -16) and the 2-tuple shape, byte-for-byte.
+    #[test]
+    fn suit_digest_sha256_encodes_cose_alg_id_and_raw_bytes() {
+        let digest = SuitDigest {
+            algorithm: "sha256".to_string(),
+            digest: vec![0xAA, 0xBB, 0xCC, 0xDD],
+        };
+        let bytes = encode_to_cbor(&digest);
+        assert_eq!(hex::encode(bytes.as_slice()), "822f44aabbccdd");
+    }
+
+    /// `suit-digest-algorithm-id` is a REQUIRED CDDL field; an unrecognized algorithm must
+    /// be a hard error, never a silently-truncated (and therefore invalid) CBOR tuple.
+    #[test]
+    fn suit_digest_unknown_algorithm_is_a_serialize_error() {
+        let digest = SuitDigest {
+            algorithm: "aes-ccm-mac".to_string(),
+            digest: vec![0xAA],
+        };
+        let mut buf = Vec::new();
+        assert!(into_writer(&digest, &mut buf).is_err());
+    }
+
+    /// Cross-checked with `cbor2.dumps((3, [1, 0, 0]))`.
+    #[test]
+    fn suit_version_match_encodes_as_comparison_and_value_tuple() {
+        let version_match = SuitVersionMatch {
+            comparison: VersionComparisonType::Equal,
+            value: vec![1, 0, 0],
+        };
+        let bytes = encode_to_cbor(&version_match);
+        assert_eq!(hex::encode(bytes.as_slice()), "820383010000");
+    }
+
+    #[test]
+    fn flat_sequence_alternates_code_and_argument() {
+        let commands = vec![
+            SuitCommand {
+                ident: SuitCommandEnum::SuitDirectiveSetComponentIndex(1),
+            },
+            SuitCommand {
+                ident: SuitCommandEnum::SuitConditionVersion(15),
+            },
+        ];
+        let bytes = encode_to_cbor(FlatSequence(&commands));
+        // array(4): [12, 1, 28, 15] - 28 needs a 1-byte-extra encoding (>23).
+        assert_eq!(hex::encode(bytes.as_slice()), "840c01181c0f");
+    }
+
+    /// `SuitDirectiveOverrideParameters` merges every parameter into ONE CBOR map,
+    /// per `{+ $$SUIT_Parameters}`, rather than one map per parameter.
+    #[test]
+    fn override_parameters_merges_multiple_params_into_one_map() {
+        let params = vec![
+            SuitParameter {
+                ident: SuitParametersEnum::SuitImageSize(16),
+            },
+            SuitParameter {
+                ident: SuitParametersEnum::SuitStrictOrder(true),
+            },
+        ];
+        let bytes = encode_to_cbor(MergedParams(&params));
+        // map(2), insertion order preserved: {14: 16, 12: true}
+        assert_eq!(hex::encode(bytes.as_slice()), "a20e100cf5");
+    }
+
+    /// A `try-each` with `else_nil = false` must NOT append a CBOR `null` element;
+    /// only `else_nil = true` may add the `?nil` fallback per `SUIT_Directive_Try_Each`.
+    /// Each branch is `bstr .cbor SUIT_Command_Sequence`, i.e. bstr-wrapped, not inlined.
+    #[test]
+    fn try_each_arg_omits_nil_when_else_nil_is_false() {
+        let branch = vec![SuitCommand {
+            ident: SuitCommandEnum::SuitConditionVersion(15),
+        }];
+        let bytes = encode_to_cbor(TryEachArg(std::slice::from_ref(&branch), false));
+        // array(1): [ bstr(len4)( array(2)[28, 15] ) ] = 81 44 82 18 1c 0f
+        assert_eq!(hex::encode(bytes.as_slice()), "814482181c0f");
+    }
+
+    #[test]
+    fn try_each_arg_appends_nil_when_else_nil_is_true() {
+        let branches: Vec<Vec<SuitCommand>> = vec![];
+        let bytes = encode_to_cbor(TryEachArg(&branches, true));
+        // array(1): [ null ] = 0x81 0xF6
+        assert_eq!(hex::encode(bytes.as_slice()), "81f6");
+    }
 }
