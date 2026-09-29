@@ -41,7 +41,7 @@ fn template_and_direct_json_produce_byte_identical_cbor() {
     );
 
     let direct_cbor = read_output_file(&direct_out, "test.cbor");
-    let template_cbor = read_output_file(&template_out, "manifest.json.cbor");
+    let template_cbor = read_output_file(&template_out, "manifest.cbor");
     assert_eq!(
         direct_cbor, template_cbor,
         "rendering the template with matching --var values must produce identical CBOR to the direct JSON path"
@@ -92,7 +92,7 @@ fn signed_template_matches_signed_direct_json() {
     );
 
     let direct_cbor = read_output_file(&direct_out, "test.cbor");
-    let template_cbor = read_output_file(&template_out, "manifest.json.cbor");
+    let template_cbor = read_output_file(&template_out, "manifest.cbor");
 
     let elements = auth_wrapper_elements(&template_cbor);
     assert_eq!(
