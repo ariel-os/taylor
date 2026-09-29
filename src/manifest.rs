@@ -52,7 +52,8 @@ pub struct SuitManifest {
     pub sequence_number: usize,
     /// Component list and the shared command sequence run before every other sequence.
     pub suit_common: SuitCommon,
-    /// The manifest's command sequences (payload-fetch, install, validate, load, invoke).
+    /// The manifest's command sequences (payload-fetch, install, validate, load, invoke); each
+    /// phase is individually optional per CDDL, so this may be empty.
     pub sequence: Vec<SuitCommandSequence>,
 }
 

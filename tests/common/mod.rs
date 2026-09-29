@@ -37,9 +37,9 @@ pub fn manifest_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// Path to the checked-in reference manifest (`examples/test.json`).
+/// Path to the checked-in reference manifest (`examples/input/test.json`).
 pub fn json_path() -> PathBuf {
-    manifest_dir().join("examples/test.json")
+    manifest_dir().join("examples/input/test.json")
 }
 
 /// Path to the checked-in Jinja template (`templates/manifest.jinja`).
@@ -48,7 +48,7 @@ pub fn template_path() -> PathBuf {
 }
 
 /// The full set of `--var KEY=VALUE` CLI args that render `templates/manifest.jinja` into
-/// exactly `examples/test.json`'s content. Kept alongside [`matching_template_context`] so the
+/// exactly `examples/input/test.json`'s content. Kept alongside [`matching_template_context`] so the
 /// CLI-flag and library-context representations of the same values can't silently drift apart.
 pub const MATCHING_VAR_ARGS: &[&str] = &[
     "--var",

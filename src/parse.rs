@@ -397,7 +397,7 @@ pub fn parse<R: Read>(reader: &mut R) -> Result<SuitManifest, Error> {
 
     let suit_common = data
         .get("suit-common")
-        .ok_or("No command sequence. Suit manifest needs a command sequence")
+        .ok_or("No suit-common. Suit manifest needs a suit-common section")
         .unwrap();
 
     let components_value = suit_common
@@ -446,22 +446,21 @@ pub fn parse<R: Read>(reader: &mut R) -> Result<SuitManifest, Error> {
 
     // Parse command sequence
 
-    let seq_value = data
-        .get("sequence")
-        .ok_or_else(|| "No command sequence. Suit manifest needs a command sequence".to_string())
-        .unwrap();
-
+    // All phase sequences are individually optional per CDDL (SUIT_Unseverable_Members /
+    // SUIT_Severable_Members_Choice are all `?`); an absent "sequence" key means none are set.
     let mut seq_buf = Vec::new();
 
-    for (key, value) in seq_value
-        .as_object()
-        .ok_or_else(|| "No valid command sequence".to_string())
-        .unwrap()
-    {
-        let command_seq = parse_suit_command_sequence(key, value).ok_or_else(|| {
-            Error::UnsupportedCommand("Invalid command sequence member".to_string())
-        })?;
-        seq_buf.push(command_seq);
+    if let Some(seq_value) = data.get("sequence") {
+        for (key, value) in seq_value
+            .as_object()
+            .ok_or_else(|| "No valid command sequence".to_string())
+            .unwrap()
+        {
+            let command_seq = parse_suit_command_sequence(key, value).ok_or_else(|| {
+                Error::UnsupportedCommand("Invalid command sequence member".to_string())
+            })?;
+            seq_buf.push(command_seq);
+        }
     }
 
     Ok(SuitManifest {

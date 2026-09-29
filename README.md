@@ -10,7 +10,8 @@ Takes an input JSON file and converts it to a SUIT Manifest encoded in CBOR
 cargo run -- <path_to_json>
 ```
 
-`cargo run` with no path defaults to `examples/test.json`.
+A `JSON_PATH` or `--template <PATH>` must be given explicitly; see `examples/input/test.json`
+for a sample manifest.
 
 ### Signing
 

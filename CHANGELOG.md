@@ -16,6 +16,10 @@
   a file.
 - Verified full CDDL conformance of generated output against the official
   SUIT manifest CDDL (`suit-manifest.cddl`) using the `cddl` validator.
+- Made the top-level `sequence` manifest key optional, defaulting to no phase
+  sequences (`suit-validate`/`suit-load`/`suit-invoke`/`suit-payload-fetch`/
+  `suit-install` are all `?`-optional per CDDL); fixed a copy-pasted error
+  message on the `suit-common` lookup.
 - Added `-k`/`--key <PEM_FILE>` CLI flag to sign the generated envelope with a
   `COSE_Sign1` authentication block, via the new `brody` dependency (ES256/ES384,
   PEM PKCS8/SEC1 keys). Removed the unimplemented `sign` module stub.

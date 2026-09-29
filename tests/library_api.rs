@@ -40,8 +40,8 @@ fn assemble_unsigned_envelope_cbor(manifest: SuitManifest) -> Vec<u8> {
 }
 
 fn parse_direct_json() -> SuitManifest {
-    let mut reader = BufReader::new(File::open(json_path()).expect("examples/test.json must exist"));
-    parse(&mut reader).expect("examples/test.json must parse")
+    let mut reader = BufReader::new(File::open(json_path()).expect("examples/input/test.json must exist"));
+    parse(&mut reader).expect("examples/input/test.json must parse")
 }
 
 fn parse_rendered_template() -> SuitManifest {
@@ -52,7 +52,7 @@ fn parse_rendered_template() -> SuitManifest {
 
 #[test]
 fn direct_json_and_rendered_template_produce_the_same_manifest() {
-    // `matching_template_context` is set to `examples/test.json`'s exact values, so the two
+    // `matching_template_context` is set to `examples/input/test.json`'s exact values, so the two
     // sources must assemble into byte-identical envelopes -- the same guarantee
     // `tests/templating.rs::template_and_direct_json_produce_byte_identical_cbor` checks via
     // the CLI, proven here purely through the library API.

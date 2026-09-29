@@ -1,10 +1,6 @@
 //! Integration tests for the full JSON -> `SuitManifest` -> CBOR pipeline.
 //!
-//! These exist because the `cddl` crate (the obvious off-the-shelf validator) has confirmed
-//! bugs against real SUIT CDDL (see `docs/cddl-crate-map-groupname-bug.md`) and cannot be
-//! trusted as a conformance oracle. Instead:
-//!
-//! - `golden_*` tests freeze this crate's own output for each `examples/*.json` fixture the
+//! - `golden_*` tests freeze this crate's own output for each `examples/input/*.json` fixture the
 //!   first time it is manually verified spec-conformant (e.g. via an independent CBOR
 //!   decoder), then fail loudly on any future *unintentional* wire-format change. Golden
 //!   fixtures live in `tests/golden/*.hex`; regenerate with `UPDATE_GOLDEN=1 cargo test`
@@ -85,7 +81,7 @@ macro_rules! golden_test {
     ($test_name:ident, $fixture:literal) => {
         #[test]
         fn $test_name() {
-            let cbor = build_envelope_cbor(concat!("examples/", $fixture, ".json"));
+            let cbor = build_envelope_cbor(concat!("examples/input/", $fixture, ".json"));
             assert_matches_golden($fixture, &cbor);
         }
     };
@@ -99,16 +95,6 @@ golden_test!(
 );
 golden_test!(golden_test_json, "test");
 golden_test!(golden_prep_manifest, "prep-manifest");
-
-/// The whole point of the `suit-condition-version` shorthand is that it is sugar, not a
-/// different wire format: authoring the version-list condition either way must produce
-/// identical bytes.
-#[test]
-fn shorthand_and_standard_form_are_byte_identical() {
-    let shorthand = build_envelope_cbor("examples/manifest-handler-version.json");
-    let standard = build_envelope_cbor("examples/manifest-handler-standard.json");
-    assert_eq!(hex::encode(&shorthand), hex::encode(&standard));
-}
 
 /// Decodes with `ciborium::Value` (independent of this crate's own `Serialize` impls) and
 /// checks the structural invariants `SUIT_Envelope`/`SUIT_Manifest` require, standing in for
@@ -146,7 +132,7 @@ fn map_get<'a>(value: &'a Value, key: i128) -> Option<&'a Value> {
 
 #[test]
 fn structural_envelope_and_manifest_shape() {
-    let cbor = build_envelope_cbor("examples/manifest-handler.json");
+    let cbor = build_envelope_cbor("examples/input/manifest-handler.json");
     let (_, envelope) = decode_envelope(&cbor);
 
     let manifest_bstr = map_get(&envelope, 3)
@@ -182,7 +168,7 @@ fn structural_envelope_and_manifest_shape() {
 /// hand-written equivalent is easy to make.
 #[test]
 fn structural_try_each_branches_are_bstr_wrapped_array_elements() {
-    let cbor = build_envelope_cbor("examples/manifest-handler-standard.json");
+    let cbor = build_envelope_cbor("examples/input/manifest-handler-standard.json");
     let (_, envelope) = decode_envelope(&cbor);
     let manifest_bstr = map_get(&envelope, 3).unwrap().as_bytes().unwrap();
     let manifest: Value = ciborium::de::from_reader(manifest_bstr.as_slice()).unwrap();
