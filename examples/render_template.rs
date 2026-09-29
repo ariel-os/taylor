@@ -1,4 +1,4 @@
-//! Renders `templates/manifest.json.jinja` with sample values, then parses and encodes the
+//! Renders `templates/manifest.jinja` with sample values, then parses and encodes the
 //! result into an unsigned (digest-only) `SUIT_Envelope` CBOR, same as `taylor` does by
 //! default when no signing key is provided.
 //!
@@ -13,7 +13,7 @@ use taylor::parse::parse;
 use taylor::template::render;
 
 fn main() {
-    let template_path = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/manifest.json.jinja"));
+    let template_path = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/manifest.jinja"));
 
     let context = json!({
         "sequence_number": 1,

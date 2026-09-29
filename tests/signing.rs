@@ -1,5 +1,5 @@
 //! Application-level integration tests for the `taylor` CLI's `-k`/`--key` signing flag, using
-//! the **direct JSON path** (`examples/test.json`).
+//! the **direct JSON path** (`examples/input/test.json`).
 //!
 //! See `tests/templating.rs` for the signed *and* templated combination,
 //! `tests/library_api.rs` for equivalent coverage via the public library API (no subprocess),
@@ -14,7 +14,7 @@ mod common;
 use common::*;
 use std::path::Path;
 
-/// Runs `taylor` against `examples/test.json` with `extra_args`, returning `(success, cbor)`.
+/// Runs `taylor` against `examples/input/test.json` with `extra_args`, returning `(success, cbor)`.
 /// `cbor` is empty when the process failed.
 fn run_on_test_json(extra_args: &[&str], scratch: &Path) -> (bool, Vec<u8>) {
     let json = json_path();
