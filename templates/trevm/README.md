@@ -26,5 +26,5 @@ cargo run -- --template ./templates/trevm/manifest-trevm.jinja --vars-file ./tem
 ## With signature
 
 ```sh
-cargo run -- --template ./templates/trevm/manifest-trevm.jinja --vars-file ./templates/trevm/vars-trevm.json -k <private-key pem file> -o out
+cargo run -- --template ./templates/trevm/manifest-trevm.jinja --vars-file ./templates/trevm/vars-trevm.json -o out -k keys/demo-private-key.pem
 ```
