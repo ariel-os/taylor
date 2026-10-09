@@ -1,5 +1,16 @@
 # Changelog
 
+
+## 0.1.1 - 2026-10-09
+
+- Added trevm example and tests
+- Updated to brody 0.1.1 for the cose detached payload fix (see brody 0.1.1 changelog)
+- Updated tests about signing
+
+## 0.1.0 - 2026-09-21
+
+- Initial implementation
+
 ## Unreleased
 
 - Fixed `SuitDigest` to encode/decode raw bytes instead of hex strings.
