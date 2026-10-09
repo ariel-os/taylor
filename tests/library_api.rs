@@ -18,7 +18,7 @@ use taylor::encode::{encode_envelope, encode_manifest};
 use taylor::manifest::{SuitAuthentication, SuitDigest, SuitEnvelope, SuitManifest};
 use taylor::parse::parse;
 use taylor::sign::sign_envelope_with_key;
-use taylor::template::{build_context, render, Error};
+use taylor::template::{Error, build_context, render};
 
 /// Mirrors the manifest -> digest -> envelope assembly `main.rs` performs, so this test (and any
 /// library consumer) can reuse the exact same sequence without depending on the CLI.
@@ -40,8 +40,10 @@ fn assemble_unsigned_envelope_cbor(manifest: SuitManifest) -> Vec<u8> {
 }
 
 fn parse_direct_json() -> SuitManifest {
-    let mut reader = BufReader::new(File::open(json_path()).expect("examples/input/test.json must exist"));
-    parse(&mut reader).expect("examples/input/test.json must parse")
+    let mut reader = BufReader::new(
+        File::open(json_path()).expect("examples/input/manifests/test.json must exist"),
+    );
+    parse(&mut reader).expect("examples/input/manifests/test.json must parse")
 }
 
 fn parse_rendered_template() -> SuitManifest {
@@ -52,7 +54,7 @@ fn parse_rendered_template() -> SuitManifest {
 
 #[test]
 fn direct_json_and_rendered_template_produce_the_same_manifest() {
-    // `matching_template_context` is set to `examples/input/test.json`'s exact values, so the two
+    // `matching_template_context` is set to `examples/input/manifests/test.json`'s exact values, so the two
     // sources must assemble into byte-identical envelopes -- the same guarantee
     // `tests/templating.rs::template_and_direct_json_produce_byte_identical_cbor` checks via
     // the CLI, proven here purely through the library API.
@@ -82,9 +84,11 @@ fn signed_envelope_via_library_from_direct_json_has_a_valid_es256_signature() {
 
     let elements = auth_wrapper_elements(&signed);
     assert_eq!(elements.len(), 2);
-    let (protected, _unprotected, payload, signature) = decode_cose_sign1(&elements[1]);
+    let digest_bstr = as_bytes(&elements[0]).to_vec();
+    let (protected, _unprotected, cose_payload, signature) = decode_cose_sign1(&elements[1]);
     assert_eq!(protected_alg(&protected), -7, "ES256 must use COSE alg -7");
-    assert_valid_es256_signature(&protected, &payload, &signature);
+    assert!(cose_payload.is_none());
+    assert_valid_es256_signature(&protected, &digest_bstr, &signature);
 }
 
 #[test]
@@ -94,13 +98,16 @@ fn signed_envelope_via_library_from_template_matches_signed_direct_json() {
     let key_path = write_key_file(&scratch, ES256_TEST_KEY_PEM);
 
     let unsigned_from_template = assemble_unsigned_envelope_cbor(parse_rendered_template());
-    let signed = sign_envelope_with_key(&unsigned_from_template, &key_path).expect("signing must succeed");
+    let signed =
+        sign_envelope_with_key(&unsigned_from_template, &key_path).expect("signing must succeed");
 
     let elements = auth_wrapper_elements(&signed);
     assert_eq!(elements.len(), 2);
-    let (protected, _unprotected, payload, signature) = decode_cose_sign1(&elements[1]);
+    let digest_bstr = as_bytes(&elements[0]).to_vec();
+    let (protected, _unprotected, cose_payload, signature) = decode_cose_sign1(&elements[1]);
     assert_eq!(protected_alg(&protected), -7);
-    assert_valid_es256_signature(&protected, &payload, &signature);
+    assert!(cose_payload.is_none());
+    assert_valid_es256_signature(&protected, &digest_bstr, &signature);
 
     let unsigned_from_json = assemble_unsigned_envelope_cbor(parse_direct_json());
     assert_eq!(
@@ -114,8 +121,11 @@ fn signed_envelope_via_library_from_template_matches_signed_direct_json() {
 fn render_fails_fast_when_a_required_variable_is_missing() {
     // Pins `template::Error::MissingVariables`'s exact contents (not just "is_err()"), so a
     // regression that silently renders `null` instead of erroring would be caught.
-    let context = build_context(None, &[("sequence_number".to_string(), serde_json::json!(1))])
-        .expect("build_context with only CLI vars must succeed");
+    let context = build_context(
+        None,
+        &[("sequence_number".to_string(), serde_json::json!(1))],
+    )
+    .expect("build_context with only CLI vars must succeed");
 
     match render(&template_path(), &context) {
         Err(Error::MissingVariables(names)) => {

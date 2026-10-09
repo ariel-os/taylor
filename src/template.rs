@@ -30,7 +30,11 @@ impl fmt::Display for Error {
             Error::Io(e) => write!(f, "I/O error: {e}"),
             Error::InvalidVarsFile(msg) => write!(f, "invalid vars file: {msg}"),
             Error::MissingVariables(names) => {
-                write!(f, "template references undefined variable(s): {}", names.join(", "))
+                write!(
+                    f,
+                    "template references undefined variable(s): {}",
+                    names.join(", ")
+                )
             }
             Error::Render(e) => write!(f, "template render error: {e}"),
             Error::InvalidOutput(e) => write!(f, "rendered template isn't valid JSON: {e}"),
@@ -73,7 +77,8 @@ pub fn parse_var(s: &str) -> Result<(String, Value), String> {
     } else if let Ok(i) = value.parse::<i64>() {
         Value::Number(i.into())
     } else if let Ok(f) = value.parse::<f64>() {
-        serde_json::Number::from_f64(f).map_or_else(|| Value::String(value.to_string()), Value::Number)
+        serde_json::Number::from_f64(f)
+            .map_or_else(|| Value::String(value.to_string()), Value::Number)
     } else {
         Value::String(value.to_string())
     };

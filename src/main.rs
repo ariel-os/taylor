@@ -1,4 +1,8 @@
 use clap::{ArgAction, CommandFactory, Parser};
+use sha256::Sha256Digest;
+use std::fs::{self, File};
+use std::io::{BufReader, Cursor};
+use std::path::PathBuf;
 use taylor::manifest::{SuitAuthentication, SuitDigest, SuitEnvelope};
 use taylor::sign::sign_envelope_with_key;
 use taylor::template::{build_context, parse_var, render};
@@ -6,10 +10,6 @@ use taylor::{
     encode::{encode_envelope, encode_manifest},
     parse::parse,
 };
-use sha256::Sha256Digest;
-use std::fs::{self, File};
-use std::io::{BufReader, Cursor};
-use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(
@@ -165,7 +165,12 @@ fn main() {
 
 /// Writes `contents` to `out_dir/<source_path file stem>.<extension>`, creating `out_dir` if
 /// needed.
-fn write_output(out_dir: &std::path::Path, source_path: &std::path::Path, extension: &str, contents: &[u8]) {
+fn write_output(
+    out_dir: &std::path::Path,
+    source_path: &std::path::Path,
+    extension: &str,
+    contents: &[u8],
+) {
     fs::create_dir_all(out_dir).expect("failed to create output directory");
     let file_stem = source_path
         .file_stem()

@@ -4,7 +4,7 @@
 use std::io::Read;
 
 use serde_bytes::ByteBuf;
-use serde_json::{from_reader, Value};
+use serde_json::{Value, from_reader};
 
 use crate::{
     error::Error,
@@ -62,14 +62,11 @@ fn parse_suit_parameters(parse_key: &str, parse_value: &Value) -> Option<SuitPar
                 let digest = {
                     let str = parse_value.get("digest")?;
                     hex::decode(str.as_str().unwrap())
-                .map_err(|_| Error::UnsupportedParameter("Invalid digest hex".to_string()))
-                .unwrap()
+                        .map_err(|_| Error::UnsupportedParameter("Invalid digest hex".to_string()))
+                        .unwrap()
                 };
 
-                crate::manifest::SuitDigest {
-                    algorithm,
-                    digest,
-                }
+                crate::manifest::SuitDigest { algorithm, digest }
             }),
         }),
         "component-slot" => Some(SuitParameter {
@@ -253,7 +250,7 @@ fn parse_suit_command(parse_key: &str, parse_value: &Value) -> Result<SuitComman
             return Err(Error::UnsupportedCommand(format!(
                 "Unknown command {}",
                 parse_key
-            )))
+            )));
         }
     };
 

@@ -1,6 +1,6 @@
 //! Integration tests for the full JSON -> `SuitManifest` -> CBOR pipeline.
 //!
-//! - `golden_*` tests freeze this crate's own output for each `examples/input/*.json` fixture the
+//! - `golden_*` tests freeze this crate's own output for each `examples/input/manifests/*.json` fixture the
 //!   first time it is manually verified spec-conformant (e.g. via an independent CBOR
 //!   decoder), then fail loudly on any future *unintentional* wire-format change. Golden
 //!   fixtures live in `tests/golden/*.hex`; regenerate with `UPDATE_GOLDEN=1 cargo test`
@@ -81,7 +81,7 @@ macro_rules! golden_test {
     ($test_name:ident, $fixture:literal) => {
         #[test]
         fn $test_name() {
-            let cbor = build_envelope_cbor(concat!("examples/input/", $fixture, ".json"));
+            let cbor = build_envelope_cbor(concat!("examples/input/manifests/", $fixture, ".json"));
             assert_matches_golden($fixture, &cbor);
         }
     };
@@ -132,7 +132,7 @@ fn map_get<'a>(value: &'a Value, key: i128) -> Option<&'a Value> {
 
 #[test]
 fn structural_envelope_and_manifest_shape() {
-    let cbor = build_envelope_cbor("examples/input/manifest-handler.json");
+    let cbor = build_envelope_cbor("examples/input/manifests/manifest-handler.json");
     let (_, envelope) = decode_envelope(&cbor);
 
     let manifest_bstr = map_get(&envelope, 3)
@@ -168,7 +168,7 @@ fn structural_envelope_and_manifest_shape() {
 /// hand-written equivalent is easy to make.
 #[test]
 fn structural_try_each_branches_are_bstr_wrapped_array_elements() {
-    let cbor = build_envelope_cbor("examples/input/manifest-handler-standard.json");
+    let cbor = build_envelope_cbor("examples/input/manifests/manifest-handler-standard.json");
     let (_, envelope) = decode_envelope(&cbor);
     let manifest_bstr = map_get(&envelope, 3).unwrap().as_bytes().unwrap();
     let manifest: Value = ciborium::de::from_reader(manifest_bstr.as_slice()).unwrap();

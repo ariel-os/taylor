@@ -13,7 +13,7 @@ use common::*;
 
 #[test]
 fn no_arguments_at_all_is_rejected() {
-    // Previously defaulted silently to `examples/input/test.json`, which could sign/encode the wrong
+    // Previously defaulted silently to `examples/input/manifests/test.json`, which could sign/encode the wrong
     // manifest in a misconfigured build pipeline without any indication. A JSON path or
     // `--template` must now be given explicitly.
     let output = run_taylor(&[]);
@@ -39,19 +39,28 @@ fn template_conflicts_with_a_positional_json_path() {
 #[test]
 fn var_without_template_is_rejected() {
     let output = run_taylor(&[json_path().to_str().unwrap(), "--var", "foo=bar"]);
-    assert!(!output.status.success(), "--var without --template must be rejected");
+    assert!(
+        !output.status.success(),
+        "--var without --template must be rejected"
+    );
 }
 
 #[test]
 fn vars_file_without_template_is_rejected() {
     let output = run_taylor(&["--vars-file", "does-not-matter.json"]);
-    assert!(!output.status.success(), "--vars-file without --template must be rejected");
+    assert!(
+        !output.status.success(),
+        "--vars-file without --template must be rejected"
+    );
 }
 
 #[test]
 fn render_only_without_template_is_rejected() {
     let output = run_taylor(&[json_path().to_str().unwrap(), "--render-only"]);
-    assert!(!output.status.success(), "--render-only without --template must be rejected");
+    assert!(
+        !output.status.success(),
+        "--render-only without --template must be rejected"
+    );
 }
 
 #[test]

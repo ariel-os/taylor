@@ -1,0 +1,42 @@
+{
+    "version": 1,
+    "sequence-number": 1,
+    "suit-common": {
+
+        "suit-components": [
+            ["01"]
+        ],
+
+        "suit-shared-sequence": [
+            {"suit-directive-set-component-index": 1},
+            {"suit-directive-override-parameters": {
+                "vendor-id": "cfbff0d1-9375-5685-968c-48ce8b15ae17",
+                "class-id": "2ecbf570-9780-5c2a-bef7-4da60942464e",
+                "image-size": 1024,
+                "uri": "coap://<host-ip>:5683/payload.cwasm",
+                "image-digest": {
+                    "algorithm": "sha256",
+                    "digest": "c12efb651dc800465d80264343852c304c4dcea2da82828d8824df7638628d17"
+                }
+            }},
+
+            {"suit-condition-vendor-identifier": 15},
+            {"suit-condition-class-identifier": 15}
+        ]
+    },
+
+    "sequence": {
+        "payload-installation": [
+            {"suit-directive-set-component-index": 1},
+            {"suit-directive-fetch": 15}
+        ],
+        "payload-fetch": [
+            {"suit-directive-set-component-index": 1},
+            {"suit-directive-fetch": 15}
+        ],
+        "image-validation": [
+            {"suit-directive-set-component-index": 1},
+            {"suit-condition-image-match": 15}
+        ]
+    }
+}

@@ -7,8 +7,8 @@ use crate::manifest::{
 };
 use ciborium::ser::into_writer;
 use serde::{
-    ser::{self, SerializeMap, SerializeSeq, SerializeTuple},
     Serialize,
+    ser::{self, SerializeMap, SerializeSeq, SerializeTuple},
 };
 use serde_bytes::ByteBuf;
 
