@@ -50,10 +50,14 @@ impl Serialize for SuitManifest {
     where
         S: serde::Serializer,
     {
-        let mut m = serializer.serialize_map(Some(3 + self.sequence.len()))?; // 3 for version, sequence number and suit_common, rest is the command sequence
+        let optional_members = usize::from(self.suit_set_version.is_some());
+        let mut m = serializer.serialize_map(Some(3 + optional_members + self.sequence.len()))?;
         m.serialize_entry(&1u8, &self.version)?;
         m.serialize_entry(&2u8, &self.sequence_number)?;
         m.serialize_entry(&3u8, &encode_to_cbor(&self.suit_common))?;
+        if let Some(set_version) = &self.suit_set_version {
+            m.serialize_entry(&6u8, &encode_to_cbor(set_version))?;
+        }
         for value in &self.sequence {
             match value.sequence {
                 crate::manifest::SuitCommandSequenceEnum::SuitInstall => {
@@ -375,6 +379,7 @@ fn encode_cbor_bstr_header(len: usize) -> Vec<u8> {
 ///
 /// let manifest = SuitManifest {
 ///     version: 1,
+///     suit_set_version: None,
 ///     sequence_number: 1,
 ///     suit_common: SuitCommon {
 ///         components: vec![vec![ByteBuf::from(vec![0x00])]],
@@ -410,6 +415,7 @@ pub fn encode_manifest(manifest: &SuitManifest) -> Vec<u8> {
 ///
 /// let manifest = SuitManifest {
 ///     version: 1,
+///     suit_set_version: None,
 ///     sequence_number: 1,
 ///     suit_common: SuitCommon {
 ///         components: vec![vec![ByteBuf::from(vec![0x00])]],

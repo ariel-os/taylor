@@ -382,6 +382,21 @@ pub fn parse<R: Read>(reader: &mut R) -> Result<SuitManifest, Error> {
         None => return Err(Error::UnsupportedInput("No version".to_string())),
     };
 
+    let suit_set_version = data
+        .get("suit-set-version")
+        .map(|value| {
+            let values = value
+                .as_array()
+                .filter(|values| !values.is_empty())
+                .ok_or_else(|| Error::UnsupportedInput("Invalid suit-set-version".to_string()))?;
+            values
+                .iter()
+                .map(Value::as_i64)
+                .collect::<Option<Vec<i64>>>()
+                .ok_or_else(|| Error::UnsupportedInput("Invalid suit-set-version".to_string()))
+        })
+        .transpose()?;
+
     // Parse sequence number
 
     let sequence_number = match data.get("sequence-number") {
@@ -462,6 +477,7 @@ pub fn parse<R: Read>(reader: &mut R) -> Result<SuitManifest, Error> {
 
     Ok(SuitManifest {
         version,
+        suit_set_version,
         sequence_number,
         suit_common,
         sequence: seq_buf,

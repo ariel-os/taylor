@@ -48,6 +48,8 @@ pub enum COSEAuthBlockEnum {
 pub struct SuitManifest {
     /// The `suit-manifest-version`; currently always `1`.
     pub version: usize,
+    /// Optional component-set version encoded as `SUIT_Condition_Version_Comparison_Value`.
+    pub suit_set_version: Option<Vec<i64>>,
     /// Monotonically increasing anti-rollback counter.
     pub sequence_number: usize,
     /// Component list and the shared command sequence run before every other sequence.
