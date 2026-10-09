@@ -114,6 +114,71 @@ fn signed_template_matches_signed_direct_json() {
 }
 
 #[test]
+fn trevm_template_with_vars_file_generates_unsigned_and_signed_manifests() {
+    let template = manifest_dir().join("examples/input/templates/trevm/manifest-trevm.jinja");
+    let vars_file = manifest_dir().join("examples/input/templates/trevm/vars-trevm.json");
+    let key_path = manifest_dir().join("examples/input/keys/demo-private-key.pem");
+
+    let rendered = run_taylor(&[
+        "--template",
+        template.to_str().unwrap(),
+        "--vars-file",
+        vars_file.to_str().unwrap(),
+        "--render-only",
+    ]);
+    assert!(
+        rendered.status.success(),
+        "trevm template rendering failed: {}",
+        stderr_of(&rendered)
+    );
+    let rendered_json: serde_json::Value = serde_json::from_slice(&rendered.stdout)
+        .expect("trevm --render-only output must be valid JSON");
+    assert_eq!(rendered_json["sequence-number"], 2);
+    assert_eq!(
+        rendered_json["suit-common"]["suit-shared-sequence"][1]
+            ["suit-directive-override-parameters"]["uri"],
+        "coap://10.42.0.62:5683/gpio-blinky.bin"
+    );
+
+    let unsigned_out = scratch_dir("trevm-unsigned").join("out");
+    let unsigned = run_taylor(&[
+        "--template",
+        template.to_str().unwrap(),
+        "--vars-file",
+        vars_file.to_str().unwrap(),
+        "--output",
+        unsigned_out.to_str().unwrap(),
+    ]);
+    assert!(
+        unsigned.status.success(),
+        "trevm unsigned generation failed: {}",
+        stderr_of(&unsigned)
+    );
+    let unsigned_cbor = read_output_file(&unsigned_out, "manifest-trevm.cbor");
+    assert_eq!(auth_wrapper_elements(&unsigned_cbor).len(), 1);
+    assert!(!map_get_bytes(&envelope_map(&unsigned_cbor), 3).is_empty());
+
+    let signed_out = scratch_dir("trevm-signed").join("out").join("manifest-trevm.cbor");
+    let signed = run_taylor(&[
+        "--template",
+        template.to_str().unwrap(),
+        "--vars-file",
+        vars_file.to_str().unwrap(),
+        "--key",
+        key_path.to_str().unwrap(),
+        "--output",
+        signed_out.parent().unwrap().to_str().unwrap(),
+    ]);
+    assert!(
+        signed.status.success(),
+        "trevm signed generation failed: {}",
+        stderr_of(&signed)
+    );
+    let signed_cbor = std::fs::read(&signed_out).expect("trevm signed output must exist");
+    assert_eq!(auth_wrapper_elements(&signed_cbor).len(), 2);
+}
+
+#[test]
 fn cli_vars_override_vars_file_on_key_collision() {
     let scratch = scratch_dir("vars-file-override");
     let vars_file = scratch.join("vars.json");
