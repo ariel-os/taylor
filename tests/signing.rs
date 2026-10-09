@@ -92,7 +92,11 @@ fn signed_envelope_appends_a_valid_es384_cose_sign1_block() {
     let digest_bstr = as_bytes(&elements[0]).to_vec();
     let (protected, unprotected, cose_payload, signature) = decode_cose_sign1(&elements[1]);
 
-    assert_eq!(protected_alg(&protected), -35, "ES384 must use COSE alg -35");
+    assert_eq!(
+        protected_alg(&protected),
+        -35,
+        "ES384 must use COSE alg -35"
+    );
     assert!(unprotected.is_empty());
     assert!(cose_payload.is_none());
 

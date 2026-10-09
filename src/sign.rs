@@ -78,7 +78,10 @@ pub fn load_signer(pem: &str) -> Result<Signer, BrodyError> {
 ///
 /// std::fs::remove_file(&key_path).unwrap();
 /// ```
-pub fn sign_envelope_with_key(envelope_cbor: &[u8], key_path: &Path) -> Result<Vec<u8>, BrodyError> {
+pub fn sign_envelope_with_key(
+    envelope_cbor: &[u8],
+    key_path: &Path,
+) -> Result<Vec<u8>, BrodyError> {
     let pem = fs::read_to_string(key_path)?;
     let signer = load_signer(&pem)?;
     brody::sign_envelope(envelope_cbor, &signer)

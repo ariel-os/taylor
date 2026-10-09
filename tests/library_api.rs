@@ -18,7 +18,7 @@ use taylor::encode::{encode_envelope, encode_manifest};
 use taylor::manifest::{SuitAuthentication, SuitDigest, SuitEnvelope, SuitManifest};
 use taylor::parse::parse;
 use taylor::sign::sign_envelope_with_key;
-use taylor::template::{build_context, render, Error};
+use taylor::template::{Error, build_context, render};
 
 /// Mirrors the manifest -> digest -> envelope assembly `main.rs` performs, so this test (and any
 /// library consumer) can reuse the exact same sequence without depending on the CLI.
@@ -98,7 +98,8 @@ fn signed_envelope_via_library_from_template_matches_signed_direct_json() {
     let key_path = write_key_file(&scratch, ES256_TEST_KEY_PEM);
 
     let unsigned_from_template = assemble_unsigned_envelope_cbor(parse_rendered_template());
-    let signed = sign_envelope_with_key(&unsigned_from_template, &key_path).expect("signing must succeed");
+    let signed =
+        sign_envelope_with_key(&unsigned_from_template, &key_path).expect("signing must succeed");
 
     let elements = auth_wrapper_elements(&signed);
     assert_eq!(elements.len(), 2);
@@ -120,8 +121,11 @@ fn signed_envelope_via_library_from_template_matches_signed_direct_json() {
 fn render_fails_fast_when_a_required_variable_is_missing() {
     // Pins `template::Error::MissingVariables`'s exact contents (not just "is_err()"), so a
     // regression that silently renders `null` instead of erroring would be caught.
-    let context = build_context(None, &[("sequence_number".to_string(), serde_json::json!(1))])
-        .expect("build_context with only CLI vars must succeed");
+    let context = build_context(
+        None,
+        &[("sequence_number".to_string(), serde_json::json!(1))],
+    )
+    .expect("build_context with only CLI vars must succeed");
 
     match render(&template_path(), &context) {
         Err(Error::MissingVariables(names)) => {

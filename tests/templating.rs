@@ -23,7 +23,11 @@ fn template_and_direct_json_produce_byte_identical_cbor() {
         "--output",
         direct_out.to_str().unwrap(),
     ]);
-    assert!(direct.status.success(), "direct JSON path failed: {}", stderr_of(&direct));
+    assert!(
+        direct.status.success(),
+        "direct JSON path failed: {}",
+        stderr_of(&direct)
+    );
 
     let template_path = template_path();
     let mut template_args = vec![
@@ -135,8 +139,8 @@ fn trevm_template_with_vars_file_generates_unsigned_and_signed_manifests() {
         .expect("trevm --render-only output must be valid JSON");
     assert_eq!(rendered_json["sequence-number"], 2);
     assert_eq!(
-        rendered_json["suit-common"]["suit-shared-sequence"][1]
-            ["suit-directive-override-parameters"]["uri"],
+        rendered_json["suit-common"]["suit-shared-sequence"][1]["suit-directive-override-parameters"]
+            ["uri"],
         "coap://10.42.0.62:5683/gpio-blinky.bin"
     );
 
@@ -158,7 +162,9 @@ fn trevm_template_with_vars_file_generates_unsigned_and_signed_manifests() {
     assert_eq!(auth_wrapper_elements(&unsigned_cbor).len(), 1);
     assert!(!map_get_bytes(&envelope_map(&unsigned_cbor), 3).is_empty());
 
-    let signed_out = scratch_dir("trevm-signed").join("out").join("manifest-trevm.cbor");
+    let signed_out = scratch_dir("trevm-signed")
+        .join("out")
+        .join("manifest-trevm.cbor");
     let signed = run_taylor(&[
         "--template",
         template.to_str().unwrap(),
@@ -205,7 +211,11 @@ fn cli_vars_override_vars_file_on_key_collision() {
         "vendor_id=67e55044-10b1-426f-9247-bb680e5fe0c8",
         "--render-only",
     ]);
-    assert!(output.status.success(), "render failed: {}", stderr_of(&output));
+    assert!(
+        output.status.success(),
+        "render failed: {}",
+        stderr_of(&output)
+    );
 
     let rendered: serde_json::Value = serde_json::from_slice(&output.stdout)
         .expect("--render-only must print valid JSON to stdout");
@@ -242,10 +252,18 @@ fn missing_template_variables_fail_fast_with_a_clear_error() {
 #[test]
 fn render_only_prints_json_and_skips_encoding() {
     let template_path = template_path();
-    let mut args = vec!["--template", template_path.to_str().unwrap(), "--render-only"];
+    let mut args = vec![
+        "--template",
+        template_path.to_str().unwrap(),
+        "--render-only",
+    ];
     args.extend_from_slice(MATCHING_VAR_ARGS);
     let output = run_taylor(&args);
-    assert!(output.status.success(), "render-only failed: {}", stderr_of(&output));
+    assert!(
+        output.status.success(),
+        "render-only failed: {}",
+        stderr_of(&output)
+    );
 
     let rendered: serde_json::Value = serde_json::from_slice(&output.stdout)
         .expect("--render-only must print valid JSON to stdout, with no CBOR encoding attempted");
