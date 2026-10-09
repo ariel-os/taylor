@@ -13,7 +13,7 @@ use common::*;
 
 #[test]
 fn no_arguments_at_all_is_rejected() {
-    // Previously defaulted silently to `examples/input/test.json`, which could sign/encode the wrong
+    // Previously defaulted silently to `examples/input/manifests/test.json`, which could sign/encode the wrong
     // manifest in a misconfigured build pipeline without any indication. A JSON path or
     // `--template` must now be given explicitly.
     let output = run_taylor(&[]);

@@ -37,18 +37,18 @@ pub fn manifest_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// Path to the checked-in reference manifest (`examples/input/test.json`).
+/// Path to the checked-in reference manifest (`examples/input/manifests/test.json`).
 pub fn json_path() -> PathBuf {
-    manifest_dir().join("examples/input/test.json")
+    manifest_dir().join("examples/input/manifests/test.json")
 }
 
-/// Path to the checked-in Jinja template (`templates/manifest.jinja`).
+/// Path to the checked-in Jinja template (`examples/input/templates/manifest.jinja`).
 pub fn template_path() -> PathBuf {
-    manifest_dir().join("templates/manifest.jinja")
+    manifest_dir().join("examples/input/templates/manifest.jinja")
 }
 
-/// The full set of `--var KEY=VALUE` CLI args that render `templates/manifest.jinja` into
-/// exactly `examples/input/test.json`'s content. Kept alongside [`matching_template_context`] so the
+/// The full set of `--var KEY=VALUE` CLI args that render `examples/input/templates/manifest.jinja` into
+/// exactly `examples/input/manifests/test.json`'s content. Kept alongside [`matching_template_context`] so the
 /// CLI-flag and library-context representations of the same values can't silently drift apart.
 pub const MATCHING_VAR_ARGS: &[&str] = &[
     "--var",
@@ -66,7 +66,7 @@ pub const MATCHING_VAR_ARGS: &[&str] = &[
 ];
 
 /// The same values as [`MATCHING_VAR_ARGS`], as a `serde_json` context for rendering
-/// `templates/manifest.jinja` directly through [`taylor::template::render`].
+/// `examples/input/templates/manifest.jinja` directly through [`taylor::template::render`].
 pub fn matching_template_context() -> serde_json::Value {
     serde_json::json!({
         "sequence_number": 1,
@@ -156,10 +156,17 @@ pub fn as_bytes(value: &CborValue) -> &[u8] {
 }
 
 /// Decodes a `bstr`-wrapped, tag-18 `COSE_Sign1` block into (protected, unprotected map,
-/// payload, signature).
+/// payload, signature). The payload is `None` for the detached form required by
+/// `docs/draft-ietf-suit-manifest-37.txt`, Section 8.3 ("Authenticated Manifests"), where the
+/// bstr-wrapped `SUIT_Digest` at the start of `SUIT_Authentication` is signed instead.
 pub fn decode_cose_sign1(
     block: &CborValue,
-) -> (Vec<u8>, Vec<(CborValue, CborValue)>, Vec<u8>, Vec<u8>) {
+) -> (
+    Vec<u8>,
+    Vec<(CborValue, CborValue)>,
+    Option<Vec<u8>>,
+    Vec<u8>,
+) {
     let inner: CborValue = ciborium::de::from_reader(as_bytes(block)).unwrap();
     let array = match inner {
         CborValue::Tag(18, boxed) => match *boxed {
@@ -174,7 +181,11 @@ pub fn decode_cose_sign1(
         CborValue::Map(m) => m.clone(),
         other => panic!("expected a map for the unprotected header, got {other:?}"),
     };
-    let payload = as_bytes(&array[2]).to_vec();
+    let payload = match &array[2] {
+        CborValue::Null => None,
+        CborValue::Bytes(bytes) => Some(bytes.clone()),
+        other => panic!("expected a detached null or bstr payload, got {other:?}"),
+    };
     let signature = as_bytes(&array[3]).to_vec();
     (protected, unprotected, payload, signature)
 }

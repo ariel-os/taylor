@@ -40,8 +40,10 @@ fn assemble_unsigned_envelope_cbor(manifest: SuitManifest) -> Vec<u8> {
 }
 
 fn parse_direct_json() -> SuitManifest {
-    let mut reader = BufReader::new(File::open(json_path()).expect("examples/input/test.json must exist"));
-    parse(&mut reader).expect("examples/input/test.json must parse")
+    let mut reader = BufReader::new(
+        File::open(json_path()).expect("examples/input/manifests/test.json must exist"),
+    );
+    parse(&mut reader).expect("examples/input/manifests/test.json must parse")
 }
 
 fn parse_rendered_template() -> SuitManifest {
@@ -52,7 +54,7 @@ fn parse_rendered_template() -> SuitManifest {
 
 #[test]
 fn direct_json_and_rendered_template_produce_the_same_manifest() {
-    // `matching_template_context` is set to `examples/input/test.json`'s exact values, so the two
+    // `matching_template_context` is set to `examples/input/manifests/test.json`'s exact values, so the two
     // sources must assemble into byte-identical envelopes -- the same guarantee
     // `tests/templating.rs::template_and_direct_json_produce_byte_identical_cbor` checks via
     // the CLI, proven here purely through the library API.
@@ -82,9 +84,11 @@ fn signed_envelope_via_library_from_direct_json_has_a_valid_es256_signature() {
 
     let elements = auth_wrapper_elements(&signed);
     assert_eq!(elements.len(), 2);
-    let (protected, _unprotected, payload, signature) = decode_cose_sign1(&elements[1]);
+    let digest_bstr = as_bytes(&elements[0]).to_vec();
+    let (protected, _unprotected, cose_payload, signature) = decode_cose_sign1(&elements[1]);
     assert_eq!(protected_alg(&protected), -7, "ES256 must use COSE alg -7");
-    assert_valid_es256_signature(&protected, &payload, &signature);
+    assert!(cose_payload.is_none());
+    assert_valid_es256_signature(&protected, &digest_bstr, &signature);
 }
 
 #[test]
@@ -98,9 +102,11 @@ fn signed_envelope_via_library_from_template_matches_signed_direct_json() {
 
     let elements = auth_wrapper_elements(&signed);
     assert_eq!(elements.len(), 2);
-    let (protected, _unprotected, payload, signature) = decode_cose_sign1(&elements[1]);
+    let digest_bstr = as_bytes(&elements[0]).to_vec();
+    let (protected, _unprotected, cose_payload, signature) = decode_cose_sign1(&elements[1]);
     assert_eq!(protected_alg(&protected), -7);
-    assert_valid_es256_signature(&protected, &payload, &signature);
+    assert!(cose_payload.is_none());
+    assert_valid_es256_signature(&protected, &digest_bstr, &signature);
 
     let unsigned_from_json = assemble_unsigned_envelope_cbor(parse_direct_json());
     assert_eq!(

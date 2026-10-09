@@ -1,5 +1,5 @@
 //! Application-level integration tests for the `taylor` CLI's `-k`/`--key` signing flag, using
-//! the **direct JSON path** (`examples/input/test.json`).
+//! the **direct JSON path** (`examples/input/manifests/test.json`).
 //!
 //! See `tests/templating.rs` for the signed *and* templated combination,
 //! `tests/library_api.rs` for equivalent coverage via the public library API (no subprocess),
@@ -14,7 +14,7 @@ mod common;
 use common::*;
 use std::path::Path;
 
-/// Runs `taylor` against `examples/input/test.json` with `extra_args`, returning `(success, cbor)`.
+/// Runs `taylor` against `examples/input/manifests/test.json` with `extra_args`, returning `(success, cbor)`.
 /// `cbor` is empty when the process failed.
 fn run_on_test_json(extra_args: &[&str], scratch: &Path) -> (bool, Vec<u8>) {
     let json = json_path();
@@ -61,19 +61,19 @@ fn signed_envelope_appends_a_valid_es256_cose_sign1_block() {
     );
 
     let digest_bstr = as_bytes(&elements[0]).to_vec();
-    let (protected, unprotected, payload, signature) = decode_cose_sign1(&elements[1]);
+    let (protected, unprotected, cose_payload, signature) = decode_cose_sign1(&elements[1]);
 
     assert_eq!(protected_alg(&protected), -7, "ES256 must use COSE alg -7");
     assert!(
         unprotected.is_empty(),
         "unprotected header must be empty (no kid)"
     );
-    assert_eq!(
-        payload, digest_bstr,
-        "COSE_Sign1 payload must be exactly the original SUIT_Digest bstr"
+    assert!(
+        cose_payload.is_none(),
+        "COSE_Sign1 payload must be null when using the detached SUIT_Digest"
     );
 
-    assert_valid_es256_signature(&protected, &payload, &signature);
+    assert_valid_es256_signature(&protected, &digest_bstr, &signature);
 }
 
 #[test]
@@ -90,13 +90,13 @@ fn signed_envelope_appends_a_valid_es384_cose_sign1_block() {
     assert_eq!(elements.len(), 2);
 
     let digest_bstr = as_bytes(&elements[0]).to_vec();
-    let (protected, unprotected, payload, signature) = decode_cose_sign1(&elements[1]);
+    let (protected, unprotected, cose_payload, signature) = decode_cose_sign1(&elements[1]);
 
     assert_eq!(protected_alg(&protected), -35, "ES384 must use COSE alg -35");
     assert!(unprotected.is_empty());
-    assert_eq!(payload, digest_bstr);
+    assert!(cose_payload.is_none());
 
-    assert_valid_es384_signature(&protected, &payload, &signature);
+    assert_valid_es384_signature(&protected, &digest_bstr, &signature);
 }
 
 #[test]

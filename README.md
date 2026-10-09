@@ -10,7 +10,7 @@ Takes an input JSON file and converts it to a SUIT Manifest encoded in CBOR
 cargo run -- <path_to_json>
 ```
 
-A `JSON_PATH` or `--template <PATH>` must be given explicitly; see `examples/input/test.json`
+A `JSON_PATH` or `--template <PATH>` must be given explicitly; see `examples/input/manifests/test.json`
 for a sample manifest.
 
 ### Signing
@@ -37,7 +37,7 @@ path, along with the variables it needs:
 
 ```sh
 cargo run -- \
-  --template templates/manifest.jinja \
+  --template examples/input/templates/manifest.jinja \
   --var sequence_number=1 \
   --var vendor_id=67e55044-10b1-426f-9247-bb680e5fe0c8 \
   --var class_id=69e55044-10b1-426f-2974-bb680e5fedc8 \
@@ -54,7 +54,7 @@ cargo run -- \
   checked-in file:
 
   ```sh
-  cargo run -- --template templates/manifest.jinja \
+  cargo run -- --template examples/input/templates/manifest.jinja \
     --vars-file build/vars.json \
     --var sequence_number="$CI_PIPELINE_IID"
   ```

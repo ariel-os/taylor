@@ -100,9 +100,11 @@ fn signed_template_matches_signed_direct_json() {
         2,
         "signed SUIT_Authentication must contain the digest plus one auth block"
     );
-    let (protected, _unprotected, payload, signature) = decode_cose_sign1(&elements[1]);
+    let digest_bstr = as_bytes(&elements[0]).to_vec();
+    let (protected, _unprotected, cose_payload, signature) = decode_cose_sign1(&elements[1]);
     assert_eq!(protected_alg(&protected), -7, "ES256 must use COSE alg -7");
-    assert_valid_es256_signature(&protected, &payload, &signature);
+    assert!(cose_payload.is_none());
+    assert_valid_es256_signature(&protected, &digest_bstr, &signature);
 
     assert_eq!(
         map_get_bytes(&envelope_map(&direct_cbor), 3),
