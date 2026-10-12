@@ -66,6 +66,76 @@ cargo run -- \
 - Rendering fails fast, before producing any output, if the template references a
   variable that wasn't supplied.
 
+## Supported manifest members
+
+Taylor supports these standard `SUIT_Manifest` members from `assets/suit-manifest.cddl`:
+
+| JSON input | CDDL member | CBOR key | Taylor input |
+| --- | --- | ---: | --- |
+| `version` | `suit-manifest-version` | 1 | Integer; currently expected to be `1` |
+| `sequence-number` | `suit-manifest-sequence-number` | 2 | Non-negative integer |
+| `suit-common` | `suit-common` | 3 | Object containing the supported common members below |
+| `image-validation` | `suit-validate` | 7 | Command-sequence array |
+| `suit-load` | `suit-load` | 8 | Command-sequence array |
+| `suit-invoke` | `suit-invoke` | 9 | Command-sequence array |
+| `payload-fetch` | `suit-payload-fetch` | 16 | Command-sequence array |
+| `payload-installation` | `suit-install` | 20 | Command-sequence array |
+
+The `suit-common` object supports these standard members:
+
+| JSON input | CDDL member | CBOR key | Taylor input |
+| --- | --- | ---: | --- |
+| `suit-components` | `suit-components` | 2 | Array of component identifiers, with each segment supplied as hex text |
+| `suit-shared-sequence` | `suit-shared-sequence` | 4 | Command-sequence array |
+
+Taylor also supports this extension manifest member from `assets/suit-manifest-extension.cddl`:
+
+| JSON input | CDDL member | CBOR key | Taylor input |
+| --- | --- | ---: | --- |
+| `suit-set-version` | `suit-set-version` | 6 | Non-empty array of integers, encoded as `bstr .cbor SUIT_Condition_Version_Comparison_Value` |
+
+## Supported directives
+
+Taylor accepts directives as single-key JSON objects inside a command sequence. The following
+directives from `assets/suit-manifest.cddl` are supported:
+
+| JSON directive | CBOR code | Argument accepted by Taylor |
+| --- | ---: | --- |
+| `suit-directive-set-component-index` | 12 | Non-negative integer component index |
+| `suit-directive-try-each` | 15 | Array of command-sequence arrays, optionally ending with `null` |
+| `suit-directive-write` | 18 | Reporting-policy integer |
+| `suit-directive-override-parameters` | 20 | JSON object of supported parameters |
+| `suit-directive-fetch` | 21 | Reporting-policy integer |
+| `suit-directive-copy` | 22 | Reporting-policy integer |
+| `suit-directive-invoke` | 23 | Reporting-policy integer |
+| `suit-directive-swap` | 31 | Reporting-policy integer |
+| `suit-directive-run-sequence` | 32 | Nested command-sequence array |
+
+Taylor currently supports no directives from the extension CDDL in
+`assets/suit-manifest-extension.cddl`.
+
+### Supported standard conditions
+
+These conditions are defined by `assets/suit-manifest.cddl` and are supported by Taylor:
+
+| JSON condition | CBOR code | Argument accepted by Taylor |
+| --- | ---: | --- |
+| `suit-condition-vendor-identifier` | 1 | Reporting-policy integer |
+| `suit-condition-class-identifier` | 2 | Reporting-policy integer |
+| `suit-condition-image-match` | 3 | Reporting-policy integer |
+| `suit-condition-component-slot` | 5 | Reporting-policy integer |
+| `suit-condition-check-content` | 6 | Reporting-policy integer |
+| `suit-condition-abort` | 14 | Reporting-policy integer |
+| `suit-condition-device-identifier` | 24 | Reporting-policy integer |
+
+### Supported extension conditions
+
+Taylor supports the following condition from `assets/suit-manifest-extension.cddl`:
+
+| JSON condition | CBOR code | Argument accepted by Taylor |
+| --- | ---: | --- |
+| `suit-condition-version` | 28 | A reporting-policy integer, or an object with `comparison`, `value`, and optional `policy` fields |
+
 ## How to add fields
 
  - Add the structure into the manifest.rs file
