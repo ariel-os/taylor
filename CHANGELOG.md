@@ -1,6 +1,11 @@
 # Changelog
 
 
+## Unreleased
+
+- Added support for the optional SUIT extension manifest member
+  `suit-set-version` (CBOR key `6`), including JSON parsing and CBOR encoding.
+
 ## 0.1.1 - 2026-10-09
 
 - Added trevm example and tests
@@ -10,9 +15,6 @@
 ## 0.1.0 - 2026-09-21
 
 - Initial implementation
-
-## Unreleased
-
 - Fixed `SuitDigest` to encode/decode raw bytes instead of hex strings.
 - Overhauled parameter types across `SuitParametersEnum` for CDDL correctness.
 - Encoded component identifiers as raw bytes and unwrapped `suit-components`.
