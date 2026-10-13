@@ -63,6 +63,7 @@ pub fn load_signer(pem: &str) -> Result<Signer, BrodyError> {
 ///     },
 ///     manifest: SuitManifest {
 ///         version: 1,
+///         suit_set_version: None,
 ///         sequence_number: 1,
 ///         suit_common: SuitCommon {
 ///             components: vec![vec![ByteBuf::from(vec![0x00])]],

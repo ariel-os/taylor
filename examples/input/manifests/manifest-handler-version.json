@@ -1,5 +1,6 @@
 {
     "version": 1,
+    "suit-set-version": [1, 2, 3],
     "sequence-number": 1757260800,
 
     "suit-common": {

@@ -163,6 +163,42 @@ fn structural_envelope_and_manifest_shape() {
     );
 }
 
+#[test]
+fn suit_set_version_is_encoded_as_a_cbor_version_value_bstr() {
+    let path = std::env::temp_dir().join("taylor_test_suit_set_version.json");
+    fs::write(
+        &path,
+        r#"{
+            "version": 1,
+            "suit-set-version": [1, 2, 3],
+            "sequence-number": 1,
+            "suit-common": { "suit-components": [["00"]], "suit-shared-sequence": [] },
+            "sequence": {}
+        }"#,
+    )
+    .unwrap();
+
+    let mut reader = BufReader::new(File::open(&path).unwrap());
+    let manifest = parse(&mut reader).expect("suit-set-version fixture must parse");
+    fs::remove_file(&path).ok();
+
+    assert_eq!(manifest.suit_set_version, Some(vec![1, 2, 3]));
+
+    let encoded: Value = ciborium::de::from_reader(encode_manifest(&manifest).as_slice())
+        .expect("encoded manifest must be a CBOR bstr");
+    let manifest_bytes = encoded.as_bytes().expect("manifest must be a bstr");
+    let manifest_map: Value = ciborium::de::from_reader(manifest_bytes.as_slice()).unwrap();
+    let set_version = map_get(&manifest_map, 6)
+        .expect("manifest must contain suit-set-version (key 6)")
+        .as_bytes()
+        .expect("suit-set-version must be a bstr");
+    let version_value: Value = ciborium::de::from_reader(set_version.as_slice()).unwrap();
+    assert_eq!(
+        version_value,
+        Value::Array(vec![1.into(), 2.into(), 3.into()])
+    );
+}
+
 /// A `suit-directive-try-each` branch's argument must be an ARRAY of bstr-wrapped command
 /// sequences (one per branch), never a bare command sequence - the mistake the shorthand's
 /// hand-written equivalent is easy to make.
