@@ -1,10 +1,42 @@
 # Changelog
 
 
-## Unreleased
+## 0.2.0 - 2026-10-13
 
 - Added support for the optional SUIT extension manifest member
   `suit-set-version` (CBOR key `6`), including JSON parsing and CBOR encoding.
+  **Breaking:** `SuitManifest` has a new public field, `suit_set_version`.
+- Added `taylor::envelope::build_envelope`, which encodes a parsed manifest into a
+  complete, optionally signed, `SUIT_Envelope`. It returns
+  `Error::UnsupportedAlgorithm` instead of panicking when a hand-built manifest uses an
+  unsupported digest algorithm; `encode_manifest` and `encode_envelope` document that
+  they panic in that case.
+- Added `taylor::sign::sign_envelope_with_pem` for signing with a PEM key held in memory,
+  and re-exported `brody::Signer` as `taylor::sign::Signer`.
+- Added `taylor::cli::run`, which runs the command-line interface in-process and returns
+  its exit code.
+- `taylor::parse::parse` now returns an error instead of panicking on malformed input,
+  and rejects image digest algorithms other than `sha256`, `sha384`, and `sha512`.
+  Parse errors now name the failing command, parameter, or algorithm and the sequence
+  it appears in, instead of a generic "Invalid shared sequence" message.
+- **Breaking:** `taylor::parse::parse` now rejects input it used to silently misread:
+  a command object with more than one key (previously only one key was kept), and a
+  `suit-condition-version` `policy` that isn't a non-negative integer (previously
+  replaced by `15`).
+- Added the `InvalidJson` and `Signing` variants to `taylor::error::Error`.
+  **Breaking:** because they wrap `serde_json::Error` and `brody::Error`,
+  `taylor::error::Error` is no longer `UnwindSafe` or `RefUnwindSafe`.
+- **Breaking:** `taylor::error::Error` and `taylor::template::Error` are now
+  `#[non_exhaustive]`.
+- **Breaking:** `SuitManifest`, `SuitCommon`, `SuitCommandEnum`,
+  `SuitCommandSequenceEnum`, and `SuitParametersEnum` are now `#[non_exhaustive]`, so
+  future SUIT members, commands, phases, and parameters can be added in minor releases.
+  Build `SuitManifest` and `SuitCommon` with the new `new` constructors, and add a
+  wildcard arm when matching on these enums.
+- Added a `cargo-semver-checks` CI job that checks the public API against the latest
+  release on crates.io.
+- **Breaking:** the CLI now exits with code 1 and an error message on runtime failures,
+  instead of panicking with code 101. Usage errors still exit with code 2.
 
 ## 0.1.1 - 2026-10-09
 

@@ -66,6 +66,40 @@ cargo run -- \
 - Rendering fails fast, before producing any output, if the template references a
   variable that wasn't supplied.
 
+### Exit codes
+
+| Code | Meaning |
+| ---: | --- |
+| 0 | Success, including `--help` and `--version` |
+| 1 | Runtime failure, such as an unreadable file, invalid manifest, or bad signing key |
+| 2 | Usage error, such as a missing manifest source or conflicting arguments |
+
+## Library usage
+
+Add Taylor as a dependency with `cargo add taylor`, then parse a JSON manifest and build the
+CBOR envelope:
+
+```rust
+use taylor::envelope::build_envelope;
+use taylor::parse::parse;
+use taylor::sign::load_signer;
+
+fn generate(json: &str, key_pem: Option<&str>) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let manifest = parse(&mut json.as_bytes())?;
+    let signer = key_pem.map(load_signer).transpose()?;
+    Ok(build_envelope(manifest, signer.as_ref())?)
+}
+```
+
+- `taylor::parse::parse` reads the JSON manifest from any `std::io::Read` and returns an error,
+  never panics, on malformed input.
+- `taylor::envelope::build_envelope` encodes the manifest, adds its SHA-256 digest, and signs
+  the envelope when a `Signer` is given.
+- `taylor::sign::sign_envelope_with_pem` and `sign_envelope_with_key` sign an already encoded
+  envelope with a PEM key given as text or as a file path.
+- `taylor::template::render` renders a `minijinja` template into manifest JSON.
+- `taylor::cli::run` runs the command-line interface in-process and returns its exit code.
+
 ## Supported manifest members
 
 Taylor supports these standard `SUIT_Manifest` members from `assets/suit-manifest.cddl`:
@@ -139,6 +173,8 @@ Taylor supports the following condition from `assets/suit-manifest-extension.cdd
 ## How to add fields
 
  - Add the structure into the manifest.rs file
+   - for a new `SuitManifest` or `SuitCommon` field, also set its default in the type's `new`
+     constructor
  - Implement parsing in parse.rs,
    - start with adding to parse fn and if necessary add helper function
    - add to return value
@@ -150,10 +186,21 @@ Taylor supports the following condition from `assets/suit-manifest-extension.cdd
 cargo test
 ```
 
-Runs unit tests, the signing integration tests in [`tests/signing.rs`](tests/signing.rs)
-(which spawn the built binary and cryptographically verify the resulting `COSE_Sign1`
-blocks), the templating integration tests in
-[`tests/templating.rs`](tests/templating.rs), and all doc-tests.
+Runs the unit tests, all doc-tests, and these integration tests:
+
+- [`tests/manifest_encoding.rs`](tests/manifest_encoding.rs): compares the CBOR generated for
+  each example manifest that has a fixture in `tests/golden/` with that fixture, and checks the
+  decoded structure. After confirming that an output change is intended and spec-conformant,
+  regenerate the fixtures with `UPDATE_GOLDEN=1 cargo test`.
+- [`tests/library_api.rs`](tests/library_api.rs): exercises the public library API without
+  running the binary.
+- [`tests/signing.rs`](tests/signing.rs): runs the built binary and independently verifies the
+  resulting `COSE_Sign1` signatures.
+- [`tests/templating.rs`](tests/templating.rs): runs the built binary with `--template`,
+  `--var`, `--vars-file`, and `--render-only`, including the trevm example.
+- [`tests/cli_validation.rs`](tests/cli_validation.rs): checks that invalid invocations exit
+  with code 2 and runtime failures exit with code 1.
+
 ## Documentation
 
 ```sh

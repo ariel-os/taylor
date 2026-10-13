@@ -16,12 +16,10 @@ use std::fs::{self, File};
 use std::io::BufReader;
 
 use ciborium::Value;
-use sha256::Sha256Digest;
-use taylor::encode::{encode_envelope, encode_manifest};
-use taylor::manifest::{SuitAuthentication, SuitDigest, SuitEnvelope};
+use taylor::encode::encode_manifest;
+use taylor::envelope::build_envelope;
 use taylor::parse::parse;
 
-/// Mirrors `main.rs`'s unsigned (digest-only) envelope construction.
 fn build_envelope_cbor(json_path: &str) -> Vec<u8> {
     let mut reader = BufReader::new(File::open(json_path).unwrap_or_else(|e| {
         panic!("failed to open fixture {json_path}: {e}");
@@ -29,22 +27,7 @@ fn build_envelope_cbor(json_path: &str) -> Vec<u8> {
     let manifest = parse(&mut reader).unwrap_or_else(|e| {
         panic!("failed to parse fixture {json_path}: {e}");
     });
-
-    let manifest_cbor = encode_manifest(&manifest);
-    let digest_hex = manifest_cbor.digest();
-    let digest = hex::decode(&digest_hex).expect("sha256 digest hex must be valid");
-
-    let envelope = SuitEnvelope {
-        auth_block: SuitAuthentication {
-            digest: SuitDigest {
-                algorithm: "sha256".to_owned(),
-                digest,
-            },
-            auth_blocks: Vec::new(),
-        },
-        manifest,
-    };
-    encode_envelope(&envelope)
+    build_envelope(manifest, None).expect("unsigned envelope must build")
 }
 
 fn golden_path(name: &str) -> String {

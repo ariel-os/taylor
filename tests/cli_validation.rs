@@ -1,11 +1,13 @@
-//! Integration tests for the `taylor` CLI's argument-shape validation -- usage errors that must
-//! be rejected up front, before any file I/O, rendering, or encoding happens, regardless of
-//! which feature (signing, templating) is otherwise in play.
+//! Integration tests for the `taylor` CLI's exit codes: usage errors that must be rejected up
+//! front with exit code 2, before any file I/O, rendering, or encoding happens, and runtime
+//! failures (unreadable input, invalid manifest, bad signing key) that must exit with code 1
+//! and an `error:` message instead of panicking.
 //!
 //! Kept separate from `tests/signing.rs`/`tests/templating.rs` so those files can focus on
 //! "does the feature behave correctly", while this file focuses on "is a malformed invocation
-//! rejected". See `tests/library_api.rs` for the equivalent negative cases at the library level
-//! (`taylor::template::build_context`/`render` returning `Err`, rather than a CLI exit code).
+//! rejected". See `tests/library_api.rs` for related negative cases at the library level
+//! (`taylor::template::build_context`/`render` and `taylor::envelope::build_envelope` returning
+//! `Err`, rather than a CLI exit code).
 
 mod common;
 
@@ -17,9 +19,11 @@ fn no_arguments_at_all_is_rejected() {
     // manifest in a misconfigured build pipeline without any indication. A JSON path or
     // `--template` must now be given explicitly.
     let output = run_taylor(&[]);
-    assert!(
-        !output.status.success(),
-        "running with no arguments must fail, not default silently to a manifest"
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "running with no arguments must fail, not default silently to a manifest: {}",
+        stderr_of(&output)
     );
 }
 
@@ -30,36 +34,44 @@ fn template_conflicts_with_a_positional_json_path() {
         "--template",
         template_path().to_str().unwrap(),
     ]);
-    assert!(
-        !output.status.success(),
-        "a JSON path and --template together must be rejected as mutually exclusive"
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "a JSON path and --template together must be rejected as mutually exclusive: {}",
+        stderr_of(&output)
     );
 }
 
 #[test]
 fn var_without_template_is_rejected() {
     let output = run_taylor(&[json_path().to_str().unwrap(), "--var", "foo=bar"]);
-    assert!(
-        !output.status.success(),
-        "--var without --template must be rejected"
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "--var without --template must be rejected: {}",
+        stderr_of(&output)
     );
 }
 
 #[test]
 fn vars_file_without_template_is_rejected() {
     let output = run_taylor(&["--vars-file", "does-not-matter.json"]);
-    assert!(
-        !output.status.success(),
-        "--vars-file without --template must be rejected"
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "--vars-file without --template must be rejected: {}",
+        stderr_of(&output)
     );
 }
 
 #[test]
 fn render_only_without_template_is_rejected() {
     let output = run_taylor(&[json_path().to_str().unwrap(), "--render-only"]);
-    assert!(
-        !output.status.success(),
-        "--render-only without --template must be rejected"
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "--render-only without --template must be rejected: {}",
+        stderr_of(&output)
     );
 }
 
@@ -71,8 +83,58 @@ fn malformed_var_without_equals_sign_is_rejected() {
         "--var",
         "no-equals-sign",
     ]);
-    assert!(
-        !output.status.success(),
-        "a --var without `=` must be rejected by clap's value_parser"
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "a --var without `=` must be rejected by clap's value_parser: {}",
+        stderr_of(&output)
     );
+}
+
+#[test]
+fn vars_file_with_json_path_but_no_template_exits_with_code_2() {
+    let output = run_taylor(&[
+        json_path().to_str().unwrap(),
+        "--vars-file",
+        "does-not-matter.json",
+    ]);
+    let stderr = stderr_of(&output);
+    assert_eq!(output.status.code(), Some(2), "{stderr}");
+    assert!(
+        stderr.contains("--vars-file requires --template"),
+        "{stderr}"
+    );
+}
+
+/// Runtime failures must report an error and exit with 1, never panic (exit 101).
+fn assert_runtime_failure(args: &[&str]) {
+    let output = run_taylor(args);
+    let stderr = stderr_of(&output);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("error:"), "{stderr}");
+    assert!(!stderr.contains("panicked"), "{stderr}");
+}
+
+#[test]
+fn missing_manifest_file_exits_with_code_1() {
+    assert_runtime_failure(&["does-not-exist.json"]);
+}
+
+#[test]
+fn malformed_manifest_json_exits_with_code_1() {
+    let scratch = scratch_dir("cli-malformed-json");
+    let manifest = scratch.join("manifest.json");
+    std::fs::write(&manifest, "{ not json").unwrap();
+    assert_runtime_failure(&[manifest.to_str().unwrap()]);
+}
+
+#[test]
+fn invalid_signing_key_exits_with_code_1() {
+    let scratch = scratch_dir("cli-invalid-key");
+    let key_path = write_key_file(&scratch, "not a pem key");
+    assert_runtime_failure(&[
+        json_path().to_str().unwrap(),
+        "--key",
+        key_path.to_str().unwrap(),
+    ]);
 }

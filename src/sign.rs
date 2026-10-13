@@ -6,7 +6,8 @@
 use std::fs;
 use std::path::Path;
 
-use brody::{Algorithm, Error as BrodyError, Signer};
+pub use brody::Signer;
+use brody::{Algorithm, Error as BrodyError};
 
 /// Loads a signing key from `pem`, trying ES256 then ES384 since the PEM itself doesn't name
 /// its curve.
@@ -56,21 +57,13 @@ pub fn load_signer(pem: &str) -> Result<Signer, BrodyError> {
 /// let key_path = std::env::temp_dir().join("taylor_sign_doctest_key.pem");
 /// std::fs::write(&key_path, ES256_TEST_KEY_PEM).unwrap();
 ///
+/// let components = vec![vec![ByteBuf::from(vec![0x00])]];
 /// let envelope = SuitEnvelope {
 ///     auth_block: SuitAuthentication {
 ///         digest: SuitDigest { algorithm: "sha256".to_string(), digest: vec![0u8; 32] },
 ///         auth_blocks: vec![],
 ///     },
-///     manifest: SuitManifest {
-///         version: 1,
-///         suit_set_version: None,
-///         sequence_number: 1,
-///         suit_common: SuitCommon {
-///             components: vec![vec![ByteBuf::from(vec![0x00])]],
-///             shared_sequence: vec![],
-///         },
-///         sequence: vec![],
-///     },
+///     manifest: SuitManifest::new(1, SuitCommon::new(components, vec![])),
 /// };
 /// let envelope_cbor = encode_envelope(&envelope);
 ///
@@ -84,6 +77,26 @@ pub fn sign_envelope_with_key(
     key_path: &Path,
 ) -> Result<Vec<u8>, BrodyError> {
     let pem = fs::read_to_string(key_path)?;
-    let signer = load_signer(&pem)?;
+    sign_envelope_with_pem(envelope_cbor, &pem)
+}
+
+/// Returns `envelope_cbor` with a `COSE_Sign1` authentication block appended over its digest,
+/// signed with the PEM-encoded ES256 or ES384 private key in `pem`.
+///
+/// # Errors
+///
+/// Returns [`BrodyError::InvalidKey`] if `pem` doesn't parse as ES256 or ES384, or
+/// [`BrodyError::InvalidEnvelope`] if `envelope_cbor` isn't a well-formed `SUIT_Envelope`.
+///
+/// # Examples
+///
+/// ```
+/// use taylor::sign::sign_envelope_with_pem;
+///
+/// // Not a valid PEM key, so loading the signer fails before the envelope is read.
+/// assert!(sign_envelope_with_pem(&[0x00], "not a pem").is_err());
+/// ```
+pub fn sign_envelope_with_pem(envelope_cbor: &[u8], pem: &str) -> Result<Vec<u8>, BrodyError> {
+    let signer = load_signer(pem)?;
     brody::sign_envelope(envelope_cbor, &signer)
 }
