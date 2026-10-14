@@ -1,5 +1,6 @@
-//! Parses a JSON manifest description (see [the repo README](https://github.com/ariel-os/taylor#usage)
-//! for the expected shape) into a [`crate::manifest::SuitManifest`].
+//! Parses a JSON manifest description into a [`crate::manifest::SuitManifest`]. The expected
+//! shape is described in the
+//! [repo README](https://github.com/ariel-os/taylor#supported-manifest-members).
 
 use std::io::Read;
 
@@ -40,88 +41,61 @@ fn parse_version_comparison(s: &str) -> Option<crate::manifest::VersionCompariso
     }
 }
 
-fn parse_suit_parameters(parse_key: &str, parse_value: &Value) -> Option<SuitParameter> {
-    match parse_key {
-        "vendor-id" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitVendorID(
-                parse_uuid_bytes(parse_value.as_str()?).ok()?,
-            ),
-        }),
-        "class-id" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitClassID(
-                parse_uuid_bytes(parse_value.as_str()?).ok()?,
-            ),
-        }),
-        "image-digest" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitImageDigest({
-                let algorithm = {
-                    let algo = parse_value.get("algorithm")?;
-                    algo.as_str().unwrap().to_string()
-                };
+fn parse_suit_parameters(parse_key: &str, parse_value: &Value) -> Result<SuitParameter, Error> {
+    use crate::manifest::SuitParametersEnum as Param;
 
-                let digest = {
-                    let str = parse_value.get("digest")?;
-                    hex::decode(str.as_str().unwrap())
-                        .map_err(|_| Error::UnsupportedParameter("Invalid digest hex".to_string()))
-                        .unwrap()
-                };
+    let invalid = || Error::UnsupportedParameter(format!("Invalid {parse_key} parameter"));
+    let as_str = || parse_value.as_str().ok_or_else(invalid);
+    let as_u64 = || parse_value.as_u64().ok_or_else(invalid);
+    let as_bool = || parse_value.as_bool().ok_or_else(invalid);
+    let as_uuid = |s: &str| parse_uuid_bytes(s).map_err(|_| invalid());
+    let as_hex = |s: &str| hex::decode(s).map_err(|_| invalid());
 
-                crate::manifest::SuitDigest { algorithm, digest }
-            }),
-        }),
-        "component-slot" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitComponentSlot(parse_value.as_u64()?),
-        }),
-        "strict-order" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitStrictOrder(parse_value.as_bool()?),
-        }),
-        "soft-failure" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitSoftFailure(parse_value.as_bool()?),
-        }),
-        "image-size" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitImageSize(parse_value.as_u64()?),
-        }),
-        "content" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitContent(
-                hex::decode(parse_value.as_str()?).ok()?,
-            ),
-        }),
-        "uri" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitURI(parse_value.as_str()?.to_string()),
-        }),
-        "source-component" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitSourceComponent(parse_value.as_u64()?),
-        }),
-        "invoke-args" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitInvokeArgs(
-                hex::decode(parse_value.as_str()?).ok()?,
-            ),
-        }),
-        "device-id" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitDeviceID(
-                parse_uuid_bytes(parse_value.as_str()?).ok()?,
-            ),
-        }),
-        "fetch-arguments" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitFetchArguments(
-                hex::decode(parse_value.as_str()?).ok()?,
-            ),
-        }),
-        "version" => Some(SuitParameter {
-            ident: crate::manifest::SuitParametersEnum::SuitVersion(
-                crate::manifest::SuitVersionMatch {
-                    comparison: parse_version_comparison(parse_value.get("comparison")?.as_str()?)?,
-                    value: parse_value
-                        .get("value")?
-                        .as_array()?
-                        .iter()
-                        .map(|v| v.as_i64())
-                        .collect::<Option<Vec<i64>>>()?,
-                },
-            ),
-        }),
-        _ => None,
-    }
+    let ident = match parse_key {
+        "vendor-id" => Param::SuitVendorID(as_uuid(as_str()?)?),
+        "class-id" => Param::SuitClassID(as_uuid(as_str()?)?),
+        "image-digest" => {
+            let algorithm = parse_value.get("algorithm").and_then(Value::as_str);
+            let algorithm = algorithm.ok_or_else(invalid)?;
+            if crate::encode::digest_algorithm_id(algorithm).is_none() {
+                let message = format!("{algorithm} for {parse_key}");
+                return Err(Error::UnsupportedAlgorithm(message));
+            }
+            let algorithm = algorithm.to_string();
+            let digest = parse_value.get("digest").and_then(Value::as_str);
+            let digest = as_hex(digest.ok_or_else(invalid)?)?;
+            Param::SuitImageDigest(crate::manifest::SuitDigest { algorithm, digest })
+        }
+        "component-slot" => Param::SuitComponentSlot(as_u64()?),
+        "strict-order" => Param::SuitStrictOrder(as_bool()?),
+        "soft-failure" => Param::SuitSoftFailure(as_bool()?),
+        "image-size" => Param::SuitImageSize(as_u64()?),
+        "content" => Param::SuitContent(as_hex(as_str()?)?),
+        "uri" => Param::SuitURI(as_str()?.to_string()),
+        "source-component" => Param::SuitSourceComponent(as_u64()?),
+        "invoke-args" => Param::SuitInvokeArgs(as_hex(as_str()?)?),
+        "device-id" => Param::SuitDeviceID(as_uuid(as_str()?)?),
+        "fetch-arguments" => Param::SuitFetchArguments(as_hex(as_str()?)?),
+        "version" => Param::SuitVersion(parse_version_match(parse_value).ok_or_else(invalid)?),
+        _ => {
+            let message = format!("Unknown parameter {parse_key}");
+            return Err(Error::UnsupportedParameter(message));
+        }
+    };
+    Ok(SuitParameter { ident })
+}
+
+/// Reads a `{"comparison": ..., "value": [...]}` object as a `SUIT_Parameter_Version_Match`.
+fn parse_version_match(value: &Value) -> Option<crate::manifest::SuitVersionMatch> {
+    Some(crate::manifest::SuitVersionMatch {
+        comparison: parse_version_comparison(value.get("comparison")?.as_str()?)?,
+        value: value
+            .get("value")?
+            .as_array()?
+            .iter()
+            .map(Value::as_i64)
+            .collect::<Option<Vec<i64>>>()?,
+    })
 }
 
 fn parse_suit_command(parse_key: &str, parse_value: &Value) -> Result<SuitCommand, Error> {
@@ -169,11 +143,7 @@ fn parse_suit_command(parse_key: &str, parse_value: &Value) -> Result<SuitComman
         "suit-directive-override-parameters" => {
             let mut buf = Vec::new();
             for (key, value) in parse_value.as_object().ok_or_else(|| invalid(parse_key))? {
-                buf.push(
-                    parse_suit_parameters(key, value).ok_or_else(|| {
-                        Error::UnsupportedParameter("Invalid parameter".to_string())
-                    })?,
-                )
+                buf.push(parse_suit_parameters(key, value)?);
             }
             SuitCommandEnum::SuitDirectiveOverrideParameters(buf)
         }
@@ -212,7 +182,10 @@ fn parse_suit_command(parse_key: &str, parse_value: &Value) -> Result<SuitComman
                         .ok_or_else(|| invalid(parse_key))?,
                 )
                 .ok_or_else(|| invalid(parse_key))?;
-                let policy = obj.get("policy").and_then(Value::as_u64).unwrap_or(15);
+                let policy = match obj.get("policy") {
+                    None => 15,
+                    Some(policy) => policy.as_u64().ok_or_else(|| invalid(parse_key))?,
+                };
                 let versions = obj
                     .get("value")
                     .and_then(Value::as_array)
@@ -269,10 +242,11 @@ fn parse_command_sequence(parse_value: &Value) -> Result<Vec<SuitCommand>, Error
         let obj = command
             .as_object()
             .ok_or_else(|| Error::UnsupportedCommand("Invalid command entry".to_string()))?;
-        let (key, value) = obj
-            .iter()
-            .next()
-            .ok_or_else(|| Error::UnsupportedCommand("Empty command entry".to_string()))?;
+        let mut entries = obj.iter();
+        let (Some((key, value)), None) = (entries.next(), entries.next()) else {
+            let message = format!("Command entry must have exactly one key, got {}", obj.len());
+            return Err(Error::UnsupportedCommand(message));
+        };
         buf.push(parse_suit_command(key, value)?);
     }
     Ok(buf)
@@ -283,65 +257,42 @@ fn parse_command_sequence(parse_value: &Value) -> Result<Vec<SuitCommand>, Error
 // NOTE: the accepted top-level `sequence` object keys are `payload-fetch`,
 // `payload-installation`, `image-validation`, `suit-load`, `suit-invoke` - not the CDDL
 // phase names (`suit-payload-fetch`, `suit-install`, `suit-validate`). Any other key is
-// silently dropped instead of erroring (see the `_ => None` arm below, surfaced by the
-// caller as `Error::UnsupportedCommand`).
+// rejected with `Error::UnsupportedCommand`.
 fn parse_suit_command_sequence(
     parse_key: &str,
     parse_value: &Value,
-) -> Option<SuitCommandSequence> {
-    match parse_key {
-        "payload-fetch" => {
-            let suit_commands = parse_command_sequence(parse_value).ok()?;
-            let command_seq = SuitCommandSequence {
-                sequence: SuitCommandSequenceEnum::SuitPayloadFetch,
-                actions: suit_commands,
-            };
-            Some(command_seq)
+) -> Result<SuitCommandSequence, Error> {
+    let sequence = match parse_key {
+        "payload-fetch" => SuitCommandSequenceEnum::SuitPayloadFetch,
+        "payload-installation" => SuitCommandSequenceEnum::SuitInstall,
+        "image-validation" => SuitCommandSequenceEnum::SuitValidate,
+        "suit-load" => SuitCommandSequenceEnum::SuitLoad,
+        "suit-invoke" => SuitCommandSequenceEnum::SuitInvoke,
+        _ => {
+            let message = format!("Unknown command sequence {parse_key}");
+            return Err(Error::UnsupportedCommand(message));
         }
-        "payload-installation" => {
-            let suit_commands = parse_command_sequence(parse_value).ok()?;
-            let command_seq = SuitCommandSequence {
-                sequence: SuitCommandSequenceEnum::SuitInstall,
-                actions: suit_commands,
-            };
-            Some(command_seq)
-        }
-        "image-validation" => {
-            let suit_commands = parse_command_sequence(parse_value).ok()?;
-            let command_seq = SuitCommandSequence {
-                sequence: SuitCommandSequenceEnum::SuitValidate,
-                actions: suit_commands,
-            };
-            Some(command_seq)
-        }
-        "suit-load" => {
-            let suit_commands = parse_command_sequence(parse_value).ok()?;
-            let command_seq = SuitCommandSequence {
-                sequence: SuitCommandSequenceEnum::SuitLoad,
-                actions: suit_commands,
-            };
-            Some(command_seq)
-        }
-        "suit-invoke" => {
-            let suit_commands = parse_command_sequence(parse_value).ok()?;
-            let command_seq = SuitCommandSequence {
-                sequence: SuitCommandSequenceEnum::SuitInvoke,
-                actions: suit_commands,
-            };
-            Some(command_seq)
-        }
+    };
+    let actions = parse_command_sequence(parse_value).map_err(|e| e.in_location(parse_key))?;
+    Ok(SuitCommandSequence { sequence, actions })
+}
 
-        _ => None,
-    }
+/// Reads the required top-level member `key` as a non-negative integer.
+fn parse_usize_member(data: &Value, key: &str) -> Result<usize, Error> {
+    data.get(key)
+        .ok_or_else(|| Error::UnsupportedInput(format!("No {key}")))?
+        .as_u64()
+        .and_then(|n| usize::try_from(n).ok())
+        .ok_or_else(|| Error::UnsupportedInput(format!("Invalid {key}")))
 }
 
 /// Reads a JSON manifest description from `reader` and builds a [`SuitManifest`].
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics (rather than returning `Err`) on several classes of malformed input; only a subset
-/// of validation currently returns [`Error`]. Treat this as a CLI-oriented parser, not a
-/// hardened one.
+/// Returns [`Error::InvalidJson`] if `reader` doesn't contain valid JSON, and another
+/// [`Error`] variant if a required member is missing or any member, command, or parameter is
+/// malformed or unsupported.
 ///
 /// # Examples
 ///
@@ -370,17 +321,9 @@ fn parse_suit_command_sequence(
 /// fs::remove_file(&path).unwrap();
 /// ```
 pub fn parse<R: Read>(reader: &mut R) -> Result<SuitManifest, Error> {
-    let data: Value = from_reader(reader).expect("JSON-Daten konnten nicht verarbeitet werden");
+    let data: Value = from_reader(reader).map_err(Error::InvalidJson)?;
 
-    // Critical Metadata
-
-    // Parse version
-
-    let version = match data.get("version") {
-        Some(num) => usize::try_from(num.as_u64().unwrap())
-            .map_err(|_| Error::UnsupportedInput("Invalid version".to_string()))?,
-        None => return Err(Error::UnsupportedInput("No version".to_string())),
-    };
+    let version = parse_usize_member(&data, "version")?;
 
     let suit_set_version = data
         .get("suit-set-version")
@@ -397,57 +340,42 @@ pub fn parse<R: Read>(reader: &mut R) -> Result<SuitManifest, Error> {
         })
         .transpose()?;
 
-    // Parse sequence number
-
-    let sequence_number = match data.get("sequence-number") {
-        Some(num) => usize::try_from(num.as_u64().unwrap())
-            .map_err(|_| Error::UnsupportedInput("Invalid sequence number".to_string()))?,
-        None => return Err(Error::UnsupportedInput("No sequence number".to_string())),
-    };
-
-    // Parse suit common
+    let sequence_number = parse_usize_member(&data, "sequence-number")?;
 
     let suit_common = data
         .get("suit-common")
-        .ok_or("No suit-common. Suit manifest needs a suit-common section")
-        .unwrap();
+        .ok_or_else(|| Error::UnsupportedInput("No suit-common".to_string()))?;
 
     let components_value = suit_common
         .get("suit-components")
-        .ok_or("No components. Suit manifest need at least one component")
-        .unwrap();
+        .ok_or_else(|| Error::UnsupportedInput("No suit-components".to_string()))?;
 
     // Component identifiers are hex-encoded bstr segments, decoded generically (no special
     // per-label knowledge needed).
-    let components: Vec<Vec<ByteBuf>> = components_value
+    let invalid_components = || Error::UnsupportedInput("Invalid suit-components".to_string());
+    let components = components_value
         .as_array()
-        .ok_or_else(|| "Invalid suit-components".to_string())
-        .unwrap()
+        .ok_or_else(invalid_components)?
         .iter()
         .map(|segments| {
             segments
                 .as_array()
-                .ok_or_else(|| "Invalid component identifier".to_string())
-                .unwrap()
+                .ok_or_else(invalid_components)?
                 .iter()
                 .map(|segment| {
-                    ByteBuf::from(
-                        hex::decode(
-                            segment
-                                .as_str()
-                                .expect("component segment must be a string"),
-                        )
-                        .expect("component segment must be valid hex"),
-                    )
+                    let hex_segment = segment.as_str().ok_or_else(invalid_components)?;
+                    hex::decode(hex_segment)
+                        .map(ByteBuf::from)
+                        .map_err(|_| invalid_components())
                 })
-                .collect()
+                .collect::<Result<Vec<ByteBuf>, Error>>()
         })
-        .collect();
+        .collect::<Result<Vec<Vec<ByteBuf>>, Error>>()?;
 
     // Parse shared sequence
 
     let shared_seq_buf = parse_command_sequence(&suit_common["suit-shared-sequence"])
-        .map_err(|_| Error::UnsupportedCommand("Invalid shared sequence".to_string()))?;
+        .map_err(|e| e.in_location("suit-shared-sequence"))?;
 
     // Create suit common out of components & shared_sequence
 
@@ -463,15 +391,11 @@ pub fn parse<R: Read>(reader: &mut R) -> Result<SuitManifest, Error> {
     let mut seq_buf = Vec::new();
 
     if let Some(seq_value) = data.get("sequence") {
-        for (key, value) in seq_value
+        let phases = seq_value
             .as_object()
-            .ok_or_else(|| "No valid command sequence".to_string())
-            .unwrap()
-        {
-            let command_seq = parse_suit_command_sequence(key, value).ok_or_else(|| {
-                Error::UnsupportedCommand("Invalid command sequence member".to_string())
-            })?;
-            seq_buf.push(command_seq);
+            .ok_or_else(|| Error::UnsupportedCommand("Invalid command sequence".to_string()))?;
+        for (key, value) in phases {
+            seq_buf.push(parse_suit_command_sequence(key, value)?);
         }
     }
 
@@ -605,5 +529,214 @@ mod tests {
             panic!("expected SuitVendorID");
         };
         assert_eq!(bytes.len(), 16);
+    }
+
+    fn parse_str(json: &str) -> Result<SuitManifest, Error> {
+        parse(&mut json.as_bytes())
+    }
+
+    fn manifest_with(common: Value) -> String {
+        json!({"version": 1, "sequence-number": 1, "suit-common": common}).to_string()
+    }
+
+    fn manifest_with_shared(command: Value) -> String {
+        manifest_with(json!({
+            "suit-components": [["00"]],
+            "suit-shared-sequence": [command],
+        }))
+    }
+
+    #[test]
+    fn malformed_top_level_input_is_an_error_not_a_panic() {
+        let cases = [
+            ("not json", "{"),
+            ("missing version", r#"{"sequence-number": 1}"#),
+            ("string version", r#"{"version": "1"}"#),
+            ("missing sequence-number", r#"{"version": 1}"#),
+            (
+                "negative sequence-number",
+                r#"{"version": 1, "sequence-number": -1}"#,
+            ),
+            (
+                "missing suit-common",
+                r#"{"version": 1, "sequence-number": 1}"#,
+            ),
+        ];
+        for (name, json) in cases {
+            assert!(parse_str(json).is_err(), "{name} must be rejected");
+        }
+        assert!(matches!(parse_str("{"), Err(Error::InvalidJson(_))));
+    }
+
+    #[test]
+    fn malformed_components_are_an_error_not_a_panic() {
+        let cases = [
+            (
+                "missing suit-components",
+                json!({"suit-shared-sequence": []}),
+            ),
+            ("components not an array", json!({"suit-components": "00"})),
+            (
+                "identifier not an array",
+                json!({"suit-components": ["00"]}),
+            ),
+            ("segment not a string", json!({"suit-components": [[0]]})),
+            ("segment not hex", json!({"suit-components": [["zz"]]})),
+        ];
+        for (name, common) in cases {
+            assert!(
+                parse_str(&manifest_with(common)).is_err(),
+                "{name} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_sequence_object_is_an_error_not_a_panic() {
+        let json = json!({
+            "version": 1,
+            "sequence-number": 1,
+            "suit-common": {"suit-components": [["00"]], "suit-shared-sequence": []},
+            "sequence": [],
+        });
+        assert!(parse_str(&json.to_string()).is_err());
+    }
+
+    #[test]
+    fn malformed_image_digest_is_an_error_not_a_panic() {
+        let cases = [
+            (
+                "algorithm not a string",
+                json!({"algorithm": 1, "digest": "00"}),
+            ),
+            (
+                "unknown algorithm",
+                json!({"algorithm": "md5", "digest": "00"}),
+            ),
+            (
+                "digest not a string",
+                json!({"algorithm": "sha256", "digest": 0}),
+            ),
+            (
+                "digest not hex",
+                json!({"algorithm": "sha256", "digest": "zz"}),
+            ),
+        ];
+        for (name, digest) in cases {
+            let command = json!({"suit-directive-override-parameters": {"image-digest": digest}});
+            assert!(
+                parse_str(&manifest_with_shared(command)).is_err(),
+                "{name} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn supported_digest_algorithms_still_parse() {
+        for algorithm in ["sha256", "sha384", "sha512"] {
+            let command = json!({"suit-directive-override-parameters": {
+                "image-digest": {"algorithm": algorithm, "digest": "00"}
+            }});
+            assert!(
+                parse_str(&manifest_with_shared(command)).is_ok(),
+                "{algorithm} must be accepted"
+            );
+        }
+    }
+
+    fn manifest_with_sequence(sequence: Value) -> String {
+        json!({
+            "version": 1,
+            "sequence-number": 1,
+            "suit-common": {"suit-components": [["00"]], "suit-shared-sequence": []},
+            "sequence": sequence,
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn unsupported_digest_algorithm_error_names_algorithm_and_location() {
+        let command = json!({"suit-directive-override-parameters": {
+            "image-digest": {"algorithm": "md5", "digest": "00"}
+        }});
+        let err = parse_str(&manifest_with_shared(command)).unwrap_err();
+        assert!(matches!(err, Error::UnsupportedAlgorithm(_)), "{err:?}");
+        let message = err.to_string();
+        assert!(message.contains("md5"), "{message}");
+        assert!(message.contains("suit-shared-sequence"), "{message}");
+    }
+
+    #[test]
+    fn bad_vendor_id_error_names_parameter_and_location() {
+        let command = json!({"suit-directive-override-parameters": {"vendor-id": "00"}});
+        let message = parse_str(&manifest_with_shared(command))
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("vendor-id"), "{message}");
+        assert!(message.contains("suit-shared-sequence"), "{message}");
+    }
+
+    #[test]
+    fn unknown_parameter_error_says_so() {
+        let command = json!({"suit-directive-override-parameters": {"no-such-param": 1}});
+        let err = parse_str(&manifest_with_shared(command)).unwrap_err();
+        assert!(matches!(err, Error::UnsupportedParameter(_)), "{err:?}");
+        assert!(err.to_string().contains("Unknown parameter"), "{err}");
+    }
+
+    #[test]
+    fn invalid_command_argument_error_names_its_phase() {
+        let sequence = json!({"payload-installation": [{"suit-directive-fetch": "two"}]});
+        let err = parse_str(&manifest_with_sequence(sequence)).unwrap_err();
+        assert!(matches!(err, Error::UnsupportedCommand(_)), "{err:?}");
+        assert!(
+            err.to_string().ends_with("in payload-installation"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn unknown_phase_error_says_so() {
+        let sequence = json!({"no-such-phase": []});
+        let err = parse_str(&manifest_with_sequence(sequence)).unwrap_err();
+        assert!(matches!(err, Error::UnsupportedCommand(_)), "{err:?}");
+        assert!(
+            err.to_string().contains("Unknown command sequence"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn error_inside_nested_try_each_keeps_shared_sequence_location() {
+        let command = json!({"suit-directive-try-each": [[{"suit-directive-fetch": "two"}]]});
+        let err = parse_str(&manifest_with_shared(command)).unwrap_err();
+        assert!(matches!(err, Error::UnsupportedCommand(_)), "{err:?}");
+        assert!(err.to_string().contains("in suit-shared-sequence"), "{err}");
+    }
+
+    #[test]
+    fn command_entry_with_more_than_one_key_is_rejected() {
+        let sequence = json!([{"suit-directive-fetch": 2, "suit-directive-invoke": 2}]);
+        let err = parse_command_sequence(&sequence).unwrap_err();
+        assert!(matches!(err, Error::UnsupportedCommand(_)), "{err:?}");
+        assert!(err.to_string().contains("exactly one key, got 2"), "{err}");
+    }
+
+    #[test]
+    fn empty_command_entry_is_rejected() {
+        let err = parse_command_sequence(&json!([{}])).unwrap_err();
+        assert!(matches!(err, Error::UnsupportedCommand(_)), "{err:?}");
+    }
+
+    #[test]
+    fn suit_condition_version_shorthand_rejects_non_u64_policy() {
+        for policy in [json!("3"), json!(-1)] {
+            let value = json!({"comparison": "equal", "value": [[1, 0, 0]], "policy": policy});
+            let err = parse_suit_command("suit-condition-version", &value).unwrap_err();
+            assert!(
+                matches!(err, Error::UnsupportedCommand(_)),
+                "policy {policy} must be rejected, got {err:?}"
+            );
+        }
     }
 }

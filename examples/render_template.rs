@@ -5,10 +5,8 @@
 //! Run with: `cargo run --example render_template`
 
 use serde_json::json;
-use sha256::Sha256Digest;
 use std::io::Cursor;
-use taylor::encode::{encode_envelope, encode_manifest};
-use taylor::manifest::{SuitAuthentication, SuitDigest, SuitEnvelope};
+use taylor::envelope::build_envelope;
 use taylor::parse::parse;
 use taylor::template::render;
 
@@ -33,23 +31,7 @@ fn main() {
     let manifest = parse(&mut Cursor::new(rendered.as_bytes()))
         .expect("rendered JSON must parse as a SUIT manifest");
 
-    let manifest_cbor = encode_manifest(&manifest);
-    let digest_hex = manifest_cbor.digest();
-    let digest = hex::decode(&digest_hex).expect("sha256 digest hex must be valid");
-
-    // Unsigned envelope: zero auth blocks, digest-only authentication.
-    let envelope = SuitEnvelope {
-        auth_block: SuitAuthentication {
-            digest: SuitDigest {
-                algorithm: "sha256".to_owned(),
-                digest,
-            },
-            auth_blocks: Vec::new(),
-        },
-        manifest,
-    };
-
-    let envelope_cbor = encode_envelope(&envelope);
+    let envelope_cbor = build_envelope(manifest, None).expect("unsigned envelope must build");
     println!(
         "CBOR Output of Envelope (unsigned): {}",
         hex::encode(&envelope_cbor)

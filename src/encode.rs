@@ -1,6 +1,7 @@
 //! CBOR encoding of a [`crate::manifest::SuitManifest`]/[`crate::manifest::SuitEnvelope`],
 //! via hand-written [`Serialize`] impls that map each field to its CDDL-mandated integer key.
 
+use crate::error::Error;
 use crate::manifest::{
     SuitAuthentication, SuitCommand, SuitCommon, SuitDigest, SuitEnvelope, SuitManifest,
     SuitParameter,
@@ -20,8 +21,8 @@ impl Serialize for SuitEnvelope {
         let mut m = serializer.serialize_map(Some(2))?;
 
         // integer keys 2 and 3 (not "2"/"3")
-        m.serialize_entry(&2u8, &encode_to_cbor(&self.auth_block))?;
-        m.serialize_entry(&3u8, &encode_to_cbor(&self.manifest))?;
+        m.serialize_entry(&2u8, &CborBstr(&self.auth_block))?;
+        m.serialize_entry(&3u8, &CborBstr(&self.manifest))?;
 
         m.end()
     }
@@ -34,12 +35,12 @@ impl Serialize for SuitAuthentication {
     {
         if !self.auth_blocks.is_empty() {
             let mut s = serializer.serialize_tuple(2)?;
-            s.serialize_element(&encode_to_cbor(&self.digest))?;
-            s.serialize_element(&encode_to_cbor(&self.auth_blocks))?;
+            s.serialize_element(&CborBstr(&self.digest))?;
+            s.serialize_element(&CborBstr(&self.auth_blocks))?;
             s.end()
         } else {
             let mut s = serializer.serialize_tuple(1)?;
-            s.serialize_element(&encode_to_cbor(&self.digest))?;
+            s.serialize_element(&CborBstr(&self.digest))?;
             s.end()
         }
     }
@@ -54,26 +55,26 @@ impl Serialize for SuitManifest {
         let mut m = serializer.serialize_map(Some(3 + optional_members + self.sequence.len()))?;
         m.serialize_entry(&1u8, &self.version)?;
         m.serialize_entry(&2u8, &self.sequence_number)?;
-        m.serialize_entry(&3u8, &encode_to_cbor(&self.suit_common))?;
+        m.serialize_entry(&3u8, &CborBstr(&self.suit_common))?;
         if let Some(set_version) = &self.suit_set_version {
-            m.serialize_entry(&6u8, &encode_to_cbor(set_version))?;
+            m.serialize_entry(&6u8, &CborBstr(set_version))?;
         }
         for value in &self.sequence {
             match value.sequence {
                 crate::manifest::SuitCommandSequenceEnum::SuitInstall => {
-                    m.serialize_entry(&20u8, &encode_to_cbor(FlatSequence(&value.actions)))?;
+                    m.serialize_entry(&20u8, &CborBstr(FlatSequence(&value.actions)))?;
                 }
                 crate::manifest::SuitCommandSequenceEnum::SuitPayloadFetch => {
-                    m.serialize_entry(&16u8, &encode_to_cbor(FlatSequence(&value.actions)))?;
+                    m.serialize_entry(&16u8, &CborBstr(FlatSequence(&value.actions)))?;
                 }
                 crate::manifest::SuitCommandSequenceEnum::SuitValidate => {
-                    m.serialize_entry(&7u8, &encode_to_cbor(FlatSequence(&value.actions)))?;
+                    m.serialize_entry(&7u8, &CborBstr(FlatSequence(&value.actions)))?;
                 }
                 crate::manifest::SuitCommandSequenceEnum::SuitLoad => {
-                    m.serialize_entry(&8u8, &encode_to_cbor(FlatSequence(&value.actions)))?;
+                    m.serialize_entry(&8u8, &CborBstr(FlatSequence(&value.actions)))?;
                 }
                 crate::manifest::SuitCommandSequenceEnum::SuitInvoke => {
-                    m.serialize_entry(&9u8, &encode_to_cbor(FlatSequence(&value.actions)))?;
+                    m.serialize_entry(&9u8, &CborBstr(FlatSequence(&value.actions)))?;
                 }
             }
         }
@@ -89,7 +90,7 @@ impl Serialize for SuitCommon {
         let mut m = serializer.serialize_map(Some(2))?;
         // suit-components is a direct array (not bstr-wrapped); only shared-sequence is wrapped
         m.serialize_entry(&2u8, &self.components)?;
-        m.serialize_entry(&4u8, &encode_to_cbor(FlatSequence(&self.shared_sequence)))?;
+        m.serialize_entry(&4u8, &CborBstr(FlatSequence(&self.shared_sequence)))?;
         m.end()
     }
 }
@@ -100,18 +101,23 @@ impl Serialize for SuitDigest {
         S: serde::Serializer,
     {
         // suit-digest-algorithm-id is REQUIRED; per suit-manifest.cddl cose-alg-* values.
-        let alg_id: i8 = match self.algorithm.as_ref() {
-            "sha256" => -16,
-            "sha384" => -43,
-            "sha512" => -44,
-            _ => {
-                return Err(ser::Error::custom("unsupported digest algorithm"));
-            }
-        };
+        let alg_id = digest_algorithm_id(&self.algorithm).ok_or_else(|| {
+            <S::Error as ser::Error>::custom(format_args!("{} for SuitDigest", self.algorithm))
+        })?;
         let mut s = serializer.serialize_tuple(2)?;
         s.serialize_element(&alg_id)?;
         s.serialize_element(&ByteBuf::from(self.digest.clone()))?;
         s.end()
+    }
+}
+
+/// Maps a `SuitDigest` algorithm name to its COSE algorithm id, or `None` if unsupported.
+pub(crate) fn digest_algorithm_id(name: &str) -> Option<i8> {
+    match name {
+        "sha256" => Some(-16),
+        "sha384" => Some(-43),
+        "sha512" => Some(-44),
+        _ => None,
     }
 }
 
@@ -130,7 +136,13 @@ impl SuitParameter {
                 map.serialize_entry(&2u8, &ByteBuf::from(bytes.clone()))?;
             }
             crate::manifest::SuitParametersEnum::SuitImageDigest(digest) => {
-                map.serialize_entry(&3u8, &encode_to_cbor(digest))?;
+                if digest_algorithm_id(&digest.algorithm).is_none() {
+                    return Err(<M::Error as ser::Error>::custom(format_args!(
+                        "{} for image-digest",
+                        digest.algorithm
+                    )));
+                }
+                map.serialize_entry(&3u8, &CborBstr(digest))?;
             }
             crate::manifest::SuitParametersEnum::SuitComponentSlot(v) => {
                 map.serialize_entry(&5u8, v)?;
@@ -163,7 +175,7 @@ impl SuitParameter {
                 map.serialize_entry(&25u8, &ByteBuf::from(bytes.clone()))?;
             }
             crate::manifest::SuitParametersEnum::SuitVersion(version_match) => {
-                map.serialize_entry(&28u8, &encode_to_cbor(version_match))?;
+                map.serialize_entry(&28u8, &CborBstr(version_match))?;
             }
         }
         Ok(())
@@ -235,7 +247,7 @@ impl<'a> Serialize for TryEachArg<'a> {
         let extra = if self.1 { 1 } else { 0 };
         let mut seq = serializer.serialize_seq(Some(self.0.len() + extra))?;
         for branch in self.0 {
-            seq.serialize_element(&encode_to_cbor(FlatSequence(branch)))?;
+            seq.serialize_element(&CborBstr(FlatSequence(branch)))?;
         }
         if self.1 {
             seq.serialize_element(&())?;
@@ -310,7 +322,7 @@ impl SuitCommand {
             }
             SuitDirectiveRunSequence(nested) => {
                 seq.serialize_element(&32u8)?;
-                seq.serialize_element(&encode_to_cbor(FlatSequence(nested)))?;
+                seq.serialize_element(&CborBstr(FlatSequence(nested)))?;
             }
             SuitDirectiveSwap(v) => {
                 seq.serialize_element(&31u8)?;
@@ -330,16 +342,33 @@ impl SuitCommand {
     }
 }
 
-/// Helper function for recursive CBOR encoding
-/// Takes generic value that already implements the Serialize trait and encodes it into CBOR
-fn encode_to_cbor<T>(str: T) -> ByteBuf
-where
-    T: Sized + ser::Serialize,
-{
-    let mut buf = Vec::new();
-    into_writer(&str, &mut buf).unwrap();
+/// Writing into a `Vec` can't fail, so in practice this is a `SuitDigest` algorithm error.
+fn cbor_error_message(error: ciborium::ser::Error<std::io::Error>) -> String {
+    match error {
+        ciborium::ser::Error::Value(message) => message,
+        ciborium::ser::Error::Io(error) => error.to_string(),
+    }
+}
 
-    ByteBuf::from(buf)
+/// Encodes `value` into CBOR bytes.
+fn encode_to_cbor<T: Serialize>(value: T) -> Result<ByteBuf, String> {
+    let mut buf = Vec::new();
+    into_writer(&value, &mut buf).map_err(cbor_error_message)?;
+    Ok(ByteBuf::from(buf))
+}
+
+/// `bstr .cbor T`: serializes the wrapped value as a bstr holding its CBOR encoding.
+struct CborBstr<T>(T);
+
+impl<T: Serialize> Serialize for CborBstr<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        encode_to_cbor(&self.0)
+            .map_err(<S::Error as ser::Error>::custom)?
+            .serialize(serializer)
+    }
 }
 
 // Encode manifest first to calculate digest for envelope
@@ -370,6 +399,12 @@ fn encode_cbor_bstr_header(len: usize) -> Vec<u8> {
 /// length header. The digest embedded in the envelope's `SuitAuthentication` is computed
 /// over these exact bytes.
 ///
+/// # Panics
+///
+/// Panics if a [`SuitDigest`] in `manifest` uses an algorithm other than `sha256`, `sha384`,
+/// or `sha512`. Manifests returned by [`crate::parse::parse`] never do; use
+/// [`crate::envelope::build_envelope`] for a non-panicking path.
+///
 /// # Examples
 ///
 /// ```
@@ -377,32 +412,35 @@ fn encode_cbor_bstr_header(len: usize) -> Vec<u8> {
 /// use taylor::encode::encode_manifest;
 /// use taylor::manifest::{SuitCommon, SuitManifest};
 ///
-/// let manifest = SuitManifest {
-///     version: 1,
-///     suit_set_version: None,
-///     sequence_number: 1,
-///     suit_common: SuitCommon {
-///         components: vec![vec![ByteBuf::from(vec![0x00])]],
-///         shared_sequence: vec![],
-///     },
-///     sequence: vec![],
-/// };
+/// let components = vec![vec![ByteBuf::from(vec![0x00])]];
+/// let manifest = SuitManifest::new(1, SuitCommon::new(components, vec![]));
 ///
 /// let cbor = encode_manifest(&manifest);
 /// assert!(!cbor.is_empty());
 /// ```
 pub fn encode_manifest(manifest: &SuitManifest) -> Vec<u8> {
+    try_encode_manifest(manifest).unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// Fallible [`encode_manifest`].
+pub(crate) fn try_encode_manifest(manifest: &SuitManifest) -> Result<Vec<u8>, Error> {
     let mut manifest_bytes = Vec::new();
 
-    into_writer(manifest, &mut manifest_bytes).unwrap();
-    //let mut encoded = Vec::new();
+    into_writer(manifest, &mut manifest_bytes)
+        .map_err(|e| Error::UnsupportedAlgorithm(cbor_error_message(e)))?;
     let mut encoded = encode_cbor_bstr_header(manifest_bytes.len());
     encoded.extend_from_slice(&manifest_bytes);
 
-    encoded
+    Ok(encoded)
 }
 
 /// Encodes `envelope` as a tag-107 `SUIT_Envelope` (per the IANA CBOR tag registry).
+///
+/// # Panics
+///
+/// Panics if a [`SuitDigest`] in `envelope` uses an algorithm other than `sha256`, `sha384`,
+/// or `sha512`. Manifests returned by [`crate::parse::parse`] never do; use
+/// [`crate::envelope::build_envelope`] for a non-panicking path.
 ///
 /// # Examples
 ///
@@ -413,16 +451,8 @@ pub fn encode_manifest(manifest: &SuitManifest) -> Vec<u8> {
 ///     SuitAuthentication, SuitCommon, SuitDigest, SuitEnvelope, SuitManifest,
 /// };
 ///
-/// let manifest = SuitManifest {
-///     version: 1,
-///     suit_set_version: None,
-///     sequence_number: 1,
-///     suit_common: SuitCommon {
-///         components: vec![vec![ByteBuf::from(vec![0x00])]],
-///         shared_sequence: vec![],
-///     },
-///     sequence: vec![],
-/// };
+/// let components = vec![vec![ByteBuf::from(vec![0x00])]];
+/// let manifest = SuitManifest::new(1, SuitCommon::new(components, vec![]));
 ///
 /// let envelope = SuitEnvelope {
 ///     auth_block: SuitAuthentication {
@@ -437,12 +467,18 @@ pub fn encode_manifest(manifest: &SuitManifest) -> Vec<u8> {
 /// assert_eq!(&cbor[..2], &[0xd8, 0x6b]);
 /// ```
 pub fn encode_envelope(envelope: &SuitEnvelope) -> Vec<u8> {
+    try_encode_envelope(envelope).unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// Fallible [`encode_envelope`].
+pub(crate) fn try_encode_envelope(envelope: &SuitEnvelope) -> Result<Vec<u8>, Error> {
     let mut encoded = Vec::new();
 
     // Tag envelope with 107 according to IANA
     encoded.extend_from_slice(&[0xD8, 0x6B]);
-    into_writer(envelope, &mut encoded).unwrap();
-    encoded
+    into_writer(envelope, &mut encoded)
+        .map_err(|e| Error::UnsupportedAlgorithm(cbor_error_message(e)))?;
+    Ok(encoded)
 }
 
 #[cfg(test)]
@@ -461,7 +497,7 @@ mod tests {
             algorithm: "sha256".to_string(),
             digest: vec![0xAA, 0xBB, 0xCC, 0xDD],
         };
-        let bytes = encode_to_cbor(&digest);
+        let bytes = encode_to_cbor(&digest).unwrap();
         assert_eq!(hex::encode(bytes.as_slice()), "822f44aabbccdd");
     }
 
@@ -484,7 +520,7 @@ mod tests {
             comparison: VersionComparisonType::Equal,
             value: vec![1, 0, 0],
         };
-        let bytes = encode_to_cbor(&version_match);
+        let bytes = encode_to_cbor(&version_match).unwrap();
         assert_eq!(hex::encode(bytes.as_slice()), "820383010000");
     }
 
@@ -498,7 +534,7 @@ mod tests {
                 ident: SuitCommandEnum::SuitConditionVersion(15),
             },
         ];
-        let bytes = encode_to_cbor(FlatSequence(&commands));
+        let bytes = encode_to_cbor(FlatSequence(&commands)).unwrap();
         // array(4): [12, 1, 28, 15] - 28 needs a 1-byte-extra encoding (>23).
         assert_eq!(hex::encode(bytes.as_slice()), "840c01181c0f");
     }
@@ -515,7 +551,7 @@ mod tests {
                 ident: SuitParametersEnum::SuitStrictOrder(true),
             },
         ];
-        let bytes = encode_to_cbor(MergedParams(&params));
+        let bytes = encode_to_cbor(MergedParams(&params)).unwrap();
         // map(2), insertion order preserved: {14: 16, 12: true}
         assert_eq!(hex::encode(bytes.as_slice()), "a20e100cf5");
     }
@@ -528,7 +564,7 @@ mod tests {
         let branch = vec![SuitCommand {
             ident: SuitCommandEnum::SuitConditionVersion(15),
         }];
-        let bytes = encode_to_cbor(TryEachArg(std::slice::from_ref(&branch), false));
+        let bytes = encode_to_cbor(TryEachArg(std::slice::from_ref(&branch), false)).unwrap();
         // array(1): [ bstr(len4)( array(2)[28, 15] ) ] = 81 44 82 18 1c 0f
         assert_eq!(hex::encode(bytes.as_slice()), "814482181c0f");
     }
@@ -536,7 +572,7 @@ mod tests {
     #[test]
     fn try_each_arg_appends_nil_when_else_nil_is_true() {
         let branches: Vec<Vec<SuitCommand>> = vec![];
-        let bytes = encode_to_cbor(TryEachArg(&branches, true));
+        let bytes = encode_to_cbor(TryEachArg(&branches, true)).unwrap();
         // array(1): [ null ] = 0x81 0xF6
         assert_eq!(hex::encode(bytes.as_slice()), "81f6");
     }

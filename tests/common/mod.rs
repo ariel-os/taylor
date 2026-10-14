@@ -157,7 +157,7 @@ pub fn as_bytes(value: &CborValue) -> &[u8] {
 
 /// Decodes a `bstr`-wrapped, tag-18 `COSE_Sign1` block into (protected, unprotected map,
 /// payload, signature). The payload is `None` for the detached form required by
-/// `docs/draft-ietf-suit-manifest-37.txt`, Section 8.3 ("Authenticated Manifests"), where the
+/// `assets/draft-ietf-suit-manifest-37.txt`, Section 8.3 ("Authenticated Manifests"), where the
 /// bstr-wrapped `SUIT_Digest` at the start of `SUIT_Authentication` is signed instead.
 pub fn decode_cose_sign1(
     block: &CborValue,

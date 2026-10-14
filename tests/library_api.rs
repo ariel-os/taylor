@@ -2,41 +2,28 @@
 //! with no `taylor` subprocess involved -- covering the same unsigned/signed x
 //! direct-JSON/templated combinations that `tests/signing.rs` and `tests/templating.rs` cover
 //! through the CLI. This catches a regression that only affects the public API surface (and not
-//! `main.rs`'s own CLI wiring), and doubles as a working reference for library consumers who
+//! the CLI wiring in `src/cli.rs`), and doubles as a working reference for library consumers who
 //! embed `taylor` in their own tooling instead of shelling out to the binary.
 //!
-//! See `tests/cli_validation.rs` for the equivalent negative cases expressed as CLI exit codes
-//! rather than `Result::Err` variants.
+//! See `tests/cli_validation.rs` for related negative cases expressed as CLI exit codes rather
+//! than `Result::Err` variants.
 
 mod common;
 
 use common::*;
-use sha256::Sha256Digest as _;
 use std::fs::File;
 use std::io::{BufReader, Cursor};
-use taylor::encode::{encode_envelope, encode_manifest};
-use taylor::manifest::{SuitAuthentication, SuitDigest, SuitEnvelope, SuitManifest};
+use taylor::envelope::build_envelope;
+use taylor::manifest::{
+    SuitCommand, SuitCommandEnum, SuitCommon, SuitDigest, SuitManifest, SuitParameter,
+    SuitParametersEnum,
+};
 use taylor::parse::parse;
-use taylor::sign::sign_envelope_with_key;
+use taylor::sign::{load_signer, sign_envelope_with_key, sign_envelope_with_pem};
 use taylor::template::{Error, build_context, render};
 
-/// Mirrors the manifest -> digest -> envelope assembly `main.rs` performs, so this test (and any
-/// library consumer) can reuse the exact same sequence without depending on the CLI.
 fn assemble_unsigned_envelope_cbor(manifest: SuitManifest) -> Vec<u8> {
-    let manifest_cbor = encode_manifest(&manifest);
-    let digest_hex = manifest_cbor.digest();
-    let digest = hex::decode(&digest_hex).expect("sha256 digest hex must be valid");
-    let envelope = SuitEnvelope {
-        auth_block: SuitAuthentication {
-            digest: SuitDigest {
-                algorithm: "sha256".to_owned(),
-                digest,
-            },
-            auth_blocks: Vec::new(),
-        },
-        manifest,
-    };
-    encode_envelope(&envelope)
+    build_envelope(manifest, None).expect("unsigned envelope must build")
 }
 
 fn parse_direct_json() -> SuitManifest {
@@ -115,6 +102,51 @@ fn signed_envelope_via_library_from_template_matches_signed_direct_json() {
         map_get_bytes(&envelope_map(&unsigned_from_json), 3),
         "suit-manifest bytes must match the direct-JSON path regardless of templating or signing"
     );
+}
+
+#[test]
+fn build_envelope_with_signer_matches_signing_the_unsigned_envelope() {
+    let signer = load_signer(ES256_TEST_KEY_PEM).expect("test key must load");
+    let signed = build_envelope(parse_direct_json(), Some(&signer)).expect("signing must succeed");
+
+    let elements = auth_wrapper_elements(&signed);
+    assert_eq!(elements.len(), 2);
+    let digest_bstr = as_bytes(&elements[0]).to_vec();
+    let (protected, _unprotected, _payload, signature) = decode_cose_sign1(&elements[1]);
+    assert_valid_es256_signature(&protected, &digest_bstr, &signature);
+
+    // ECDSA signatures differ per call, so only compare everything except the signature.
+    let via_pem = sign_envelope_with_pem(
+        &assemble_unsigned_envelope_cbor(parse_direct_json()),
+        ES256_TEST_KEY_PEM,
+    )
+    .expect("signing must succeed");
+    assert_eq!(
+        map_get_bytes(&envelope_map(&signed), 3),
+        map_get_bytes(&envelope_map(&via_pem), 3)
+    );
+    assert_eq!(auth_wrapper_elements(&via_pem)[0], elements[0]);
+}
+
+#[test]
+fn build_envelope_rejects_unsupported_digest_algorithm_without_panicking() {
+    let override_md5_digest = SuitCommand {
+        ident: SuitCommandEnum::SuitDirectiveOverrideParameters(vec![SuitParameter {
+            ident: SuitParametersEnum::SuitImageDigest(SuitDigest {
+                algorithm: "md5".into(),
+                digest: vec![0; 16],
+            }),
+        }]),
+    };
+    let components = vec![vec![serde_bytes::ByteBuf::from(vec![0x00])]];
+    let manifest = SuitManifest::new(1, SuitCommon::new(components, vec![override_md5_digest]));
+
+    match build_envelope(manifest, None) {
+        Err(taylor::error::Error::UnsupportedAlgorithm(message)) => {
+            assert_eq!(message, "md5 for image-digest");
+        }
+        other => panic!("expected Err(Error::UnsupportedAlgorithm(_)), got {other:?}"),
+    }
 }
 
 #[test]

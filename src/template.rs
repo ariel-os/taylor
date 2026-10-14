@@ -11,6 +11,7 @@ use serde_json::{Map, Value};
 
 /// Failure rendering a template or assembling its variable context.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Error {
     /// The template file, or a `--vars-file`, couldn't be read.
     Io(std::io::Error),

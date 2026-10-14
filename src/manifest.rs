@@ -8,7 +8,7 @@ use serde_bytes::ByteBuf;
 /// The top-level `SUIT_Envelope`: an authentication wrapper plus the manifest it authenticates.
 #[derive(Debug, Deserialize)]
 pub struct SuitEnvelope {
-    /// The digest (and, once implemented, COSE signatures) covering `manifest`.
+    /// Digest of the encoded manifest; signing appends COSE blocks (see [`crate::sign`]).
     pub auth_block: SuitAuthentication,
     /// The manifest being authenticated and distributed.
     pub manifest: SuitManifest,
@@ -44,9 +44,14 @@ pub enum COSEAuthBlockEnum {
 }
 
 /// `SUIT_Manifest`: manifest metadata, shared setup, and per-phase command sequences.
+///
+/// Build one with [`SuitManifest::new`], since SUIT extensions may add members in future
+/// releases.
 #[derive(Debug, Deserialize)]
+#[non_exhaustive]
 pub struct SuitManifest {
-    /// The `suit-manifest-version`; currently always `1`.
+    /// The `suit-manifest-version`. SUIT only defines `1`, which [`SuitManifest::new`] sets;
+    /// [`crate::parse::parse`] accepts any non-negative integer.
     pub version: usize,
     /// Optional component-set version encoded as `SUIT_Condition_Version_Comparison_Value`.
     pub suit_set_version: Option<Vec<i64>>,
@@ -59,13 +64,40 @@ pub struct SuitManifest {
     pub sequence: Vec<SuitCommandSequence>,
 }
 
+impl SuitManifest {
+    /// Creates a version-1 manifest with no optional members and no command sequences.
+    pub fn new(sequence_number: usize, suit_common: SuitCommon) -> Self {
+        Self {
+            version: 1,
+            suit_set_version: None,
+            sequence_number,
+            suit_common,
+            sequence: Vec::new(),
+        }
+    }
+}
+
 /// `SUIT_Common`: the components under management and the sequence shared by every phase.
+///
+/// Build one with [`SuitCommon::new`], since SUIT extensions may add members in future
+/// releases.
 #[derive(Debug, Deserialize)]
+#[non_exhaustive]
 pub struct SuitCommon {
     /// Component identifiers, each itself a list of hex-decoded path segments.
     pub components: Vec<Vec<ByteBuf>>,
     /// Commands run once before any command sequence that references a component.
     pub shared_sequence: Vec<SuitCommand>,
+}
+
+impl SuitCommon {
+    /// Creates the common section from its component identifiers and shared sequence.
+    pub fn new(components: Vec<Vec<ByteBuf>>, shared_sequence: Vec<SuitCommand>) -> Self {
+        Self {
+            components,
+            shared_sequence,
+        }
+    }
 }
 
 /// A single command within a command sequence.
@@ -77,6 +109,7 @@ pub struct SuitCommand {
 
 /// u64 payloads are a SUIT_Rep_Policy bitmask, except for set-component-index (IndexArg).
 #[derive(Debug, Deserialize)]
+#[non_exhaustive]
 pub enum SuitCommandEnum {
     /// Assert the current component's vendor ID parameter matches.
     SuitConditionVendorIdentifier(u64),
@@ -121,6 +154,7 @@ pub enum SuitCommandEnum {
 
 /// Which phase a [`SuitCommandSequence`] belongs to; each maps to a fixed CDDL map key.
 #[derive(Debug, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum SuitCommandSequenceEnum {
     /// Fetch payloads (`suit-payload-fetch`).
     SuitPayloadFetch,
@@ -161,6 +195,7 @@ pub struct SuitDigest {
 
 /// The component parameters `SuitParameter` can carry.
 #[derive(Debug, Deserialize)]
+#[non_exhaustive]
 pub enum SuitParametersEnum {
     /// Vendor UUID.
     SuitVendorID(Vec<u8>),
