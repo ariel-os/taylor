@@ -1,7 +1,7 @@
 # Changelog
 
 
-## 0.2.0 - 2026-10-13
+## 0.2.0 - 2026-10-14
 
 - Added support for the optional SUIT extension manifest member
   `suit-set-version` (CBOR key `6`), including JSON parsing and CBOR encoding.
