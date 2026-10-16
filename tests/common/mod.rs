@@ -155,6 +155,21 @@ pub fn as_bytes(value: &CborValue) -> &[u8] {
     }
 }
 
+/// Decodes the envelope's `SUIT_Digest` into its COSE algorithm id and digest bytes.
+pub fn manifest_digest(envelope_bytes: &[u8]) -> (i64, Vec<u8>) {
+    let digest_bstr = as_bytes(&auth_wrapper_elements(envelope_bytes)[0]).to_vec();
+    match ciborium::de::from_reader::<CborValue, _>(digest_bstr.as_slice()).unwrap() {
+        CborValue::Array(pair) if pair.len() == 2 => match &pair[0] {
+            CborValue::Integer(alg) => (
+                i64::try_from(*alg).expect("alg id must fit in i64"),
+                as_bytes(&pair[1]).to_vec(),
+            ),
+            other => panic!("SUIT_Digest algorithm is not an integer, got {other:?}"),
+        },
+        other => panic!("SUIT_Digest is not a 2-element array, got {other:?}"),
+    }
+}
+
 /// Decodes a `bstr`-wrapped, tag-18 `COSE_Sign1` block into (protected, unprotected map,
 /// payload, signature). The payload is `None` for the detached form required by
 /// `assets/draft-ietf-suit-manifest-37.txt`, Section 8.3 ("Authenticated Manifests"), where the

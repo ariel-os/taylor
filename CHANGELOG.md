@@ -1,6 +1,14 @@
 # Changelog
 
 
+## Unreleased
+
+- Added `--manifest-digest sha256|sha384` to choose the hash algorithm of the manifest
+  digest that the signature covers; the default stays `sha256`. The library gains
+  `taylor::envelope::DigestAlgorithm` and `build_envelope_with_digest`, and the Python
+  `build_envelope` gains a `manifest_digest` argument.
+- Replaced the `sha256` dependency with `sha2`, which was already in the dependency tree.
+
 ## 0.2.1 - 2026-10-16
 
 - Added the `taylor-suit` Python package (imported as `taylor`), built with PyO3 and

@@ -8,6 +8,7 @@ use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use serde_json::Value;
+use taylor::envelope::DigestAlgorithm;
 use taylor::error::Error;
 use taylor::manifest::SuitManifest;
 
@@ -60,14 +61,19 @@ fn encode_manifest(py: Python<'_>, manifest_json: String) -> PyResult<Bound<'_, 
 
 /// Encodes a JSON manifest as a tag-107 `SUIT_Envelope`, signed when a key is given.
 #[pyfunction]
-#[pyo3(signature = (manifest_json, key_pem=None, key_path=None))]
-fn build_envelope(
-    py: Python<'_>,
+#[pyo3(signature = (manifest_json, key_pem=None, key_path=None, manifest_digest="sha256"))]
+fn build_envelope<'py>(
+    py: Python<'py>,
     manifest_json: String,
     key_pem: Option<String>,
     key_path: Option<PathBuf>,
-) -> PyResult<Bound<'_, PyBytes>> {
-    let envelope = py.detach(|| build_envelope_bytes(&manifest_json, key_pem, key_path))?;
+    manifest_digest: &str,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let digest_algorithm: DigestAlgorithm = manifest_digest
+        .parse()
+        .map_err(|e: Error| PyValueError::new_err(e.to_string()))?;
+    let envelope =
+        py.detach(|| build_envelope_bytes(&manifest_json, key_pem, key_path, digest_algorithm))?;
     Ok(PyBytes::new(py, &envelope))
 }
 
@@ -75,6 +81,7 @@ fn build_envelope_bytes(
     manifest_json: &str,
     key_pem: Option<String>,
     key_path: Option<PathBuf>,
+    digest_algorithm: DigestAlgorithm,
 ) -> PyResult<Vec<u8>> {
     let pem = match (key_pem, key_path) {
         (Some(_), Some(_)) => {
@@ -95,7 +102,8 @@ fn build_envelope_bytes(
         .transpose()
         .map_err(|e| SigningError::new_err(format!("invalid signing key: {e}")))?;
     let manifest = parse_manifest(manifest_json)?;
-    taylor::envelope::build_envelope(manifest, signer.as_ref()).map_err(to_py_err)
+    taylor::envelope::build_envelope_with_digest(manifest, signer.as_ref(), digest_algorithm)
+        .map_err(to_py_err)
 }
 
 /// Renders a minijinja template into manifest JSON from a JSON object of variables and/or a

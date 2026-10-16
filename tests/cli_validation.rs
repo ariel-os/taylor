@@ -92,6 +92,17 @@ fn malformed_var_without_equals_sign_is_rejected() {
 }
 
 #[test]
+fn unsupported_manifest_digest_is_rejected() {
+    let output = run_taylor(&[json_path().to_str().unwrap(), "--manifest-digest", "md5"]);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "an unsupported --manifest-digest must be rejected: {}",
+        stderr_of(&output)
+    );
+}
+
+#[test]
 fn vars_file_with_json_path_but_no_template_exits_with_code_2() {
     let output = run_taylor(&[
         json_path().to_str().unwrap(),

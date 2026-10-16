@@ -23,6 +23,14 @@ manifest digest, via the [`brody`](https://github.com/ariel-os/brody) crate:
 cargo run -- <path_to_json> --key <path_to_pem>
 ```
 
+The manifest digest that the signature covers is SHA-256 by default. Pass
+`--manifest-digest sha384` to use SHA-384 instead, for example to match the strength of a
+P-384 key:
+
+```sh
+cargo run -- <path_to_json> --key <path_to_p384_pem> --manifest-digest sha384
+```
+
 ### Output
 
 Pass `-o`/`--output <dir>` to write the generated CBOR envelope to `<dir>/<stem>.cbor`
@@ -94,7 +102,8 @@ fn generate(json: &str, key_pem: Option<&str>) -> Result<Vec<u8>, Box<dyn std::e
 - `taylor::parse::parse` reads the JSON manifest from any `std::io::Read` and returns an error,
   never panics, on malformed input.
 - `taylor::envelope::build_envelope` encodes the manifest, adds its SHA-256 digest, and signs
-  the envelope when a `Signer` is given.
+  the envelope when a `Signer` is given. `build_envelope_with_digest` does the same with a
+  chosen `DigestAlgorithm`, such as `DigestAlgorithm::Sha384`.
 - `taylor::sign::sign_envelope_with_pem` and `sign_envelope_with_key` sign an already encoded
   envelope with a PEM key given as text or as a file path.
 - `taylor::template::render` renders a `minijinja` template into manifest JSON.
@@ -123,6 +132,8 @@ manifest_json = taylor.render_template("manifest.jinja", {"sequence_number": 7},
 - `build_envelope` and `encode_manifest` accept the manifest as JSON text or as a mapping.
 - Signing keys are given either as PEM text or bytes (`key_pem`) or as a file path
   (`key_path`), not both.
+- `build_envelope(..., manifest_digest="sha384")` selects the manifest digest algorithm,
+  like `--manifest-digest`.
 - Errors are raised as `taylor.ManifestError`, `taylor.TemplateError`, or
   `taylor.SigningError`, all subclasses of `taylor.TaylorError`.
 - If the Rust binary is also installed with `cargo install taylor`, whichever `taylor`

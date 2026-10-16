@@ -11,9 +11,11 @@
 mod common;
 
 use common::*;
+use sha2::{Digest, Sha256, Sha384};
 use std::fs::File;
 use std::io::{BufReader, Cursor};
-use taylor::envelope::build_envelope;
+use taylor::encode::encode_manifest;
+use taylor::envelope::{DigestAlgorithm, build_envelope, build_envelope_with_digest};
 use taylor::manifest::{
     SuitCommand, SuitCommandEnum, SuitCommon, SuitDigest, SuitManifest, SuitParameter,
     SuitParametersEnum,
@@ -144,6 +146,69 @@ fn build_envelope_rejects_unsupported_digest_algorithm_without_panicking() {
     match build_envelope(manifest, None) {
         Err(taylor::error::Error::UnsupportedAlgorithm(message)) => {
             assert_eq!(message, "md5 for image-digest");
+        }
+        other => panic!("expected Err(Error::UnsupportedAlgorithm(_)), got {other:?}"),
+    }
+}
+
+#[test]
+fn build_envelope_defaults_to_a_sha256_manifest_digest() {
+    assert_eq!(
+        build_envelope(parse_direct_json(), None).unwrap(),
+        build_envelope_with_digest(parse_direct_json(), None, DigestAlgorithm::Sha256).unwrap()
+    );
+}
+
+#[test]
+fn manifest_digest_uses_the_requested_algorithm_over_the_encoded_manifest() {
+    let manifest_cbor = encode_manifest(&parse_direct_json());
+    let cases: [(DigestAlgorithm, i64, Vec<u8>); 2] = [
+        (
+            DigestAlgorithm::Sha256,
+            -16,
+            Sha256::digest(&manifest_cbor).to_vec(),
+        ),
+        (
+            DigestAlgorithm::Sha384,
+            -43,
+            Sha384::digest(&manifest_cbor).to_vec(),
+        ),
+    ];
+    for (algorithm, cose_id, expected) in cases {
+        let envelope = build_envelope_with_digest(parse_direct_json(), None, algorithm).unwrap();
+        assert_eq!(
+            manifest_digest(&envelope),
+            (cose_id, expected),
+            "{algorithm:?}"
+        );
+    }
+}
+
+#[test]
+fn sha384_manifest_digest_is_what_the_es384_signature_covers() {
+    let signer = load_signer(ES384_TEST_KEY_PEM).expect("test key must load");
+    let signed =
+        build_envelope_with_digest(parse_direct_json(), Some(&signer), DigestAlgorithm::Sha384)
+            .expect("signing must succeed");
+
+    assert_eq!(manifest_digest(&signed).0, -43);
+    let elements = auth_wrapper_elements(&signed);
+    let (protected, _unprotected, _payload, signature) = decode_cose_sign1(&elements[1]);
+    assert_eq!(protected_alg(&protected), -35);
+    assert_valid_es384_signature(&protected, as_bytes(&elements[0]), &signature);
+}
+
+#[test]
+fn digest_algorithm_parses_supported_names_and_rejects_others() {
+    for algorithm in [DigestAlgorithm::Sha256, DigestAlgorithm::Sha384] {
+        assert_eq!(
+            algorithm.name().parse::<DigestAlgorithm>().unwrap(),
+            algorithm
+        );
+    }
+    match "sha512".parse::<DigestAlgorithm>() {
+        Err(taylor::error::Error::UnsupportedAlgorithm(message)) => {
+            assert_eq!(message, "sha512 for manifest-digest");
         }
         other => panic!("expected Err(Error::UnsupportedAlgorithm(_)), got {other:?}"),
     }

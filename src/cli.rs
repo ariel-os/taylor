@@ -15,11 +15,10 @@ use std::fs;
 use std::io::{self, Cursor, Write};
 use std::path::{Path, PathBuf};
 
-use clap::{ArgAction, CommandFactory, Parser};
-use sha256::Sha256Digest;
+use clap::{ArgAction, CommandFactory, Parser, ValueEnum};
 
 use crate::encode::try_encode_manifest;
-use crate::envelope::build_envelope;
+use crate::envelope::{DigestAlgorithm, build_envelope_with_digest};
 use crate::parse::parse;
 use crate::sign::load_signer;
 use crate::template::{build_context, parse_var, render};
@@ -65,9 +64,29 @@ struct Cli {
     #[arg(short = 'k', long = "key", value_name = "PEM_FILE")]
     key_path: Option<PathBuf>,
 
+    /// Hash algorithm for the manifest digest, which the signature covers.
+    #[arg(long = "manifest-digest", value_name = "ALGORITHM", value_enum, default_value_t = ManifestDigest::Sha256)]
+    manifest_digest: ManifestDigest,
+
     /// Directory where the generated CBOR envelope (or, with `--render-only`, JSON) is written.
     #[arg(short, long, value_name = "DIR")]
     output: Option<PathBuf>,
+}
+
+// Kept separate from `DigestAlgorithm` so clap stays out of the library's public types.
+#[derive(Clone, Copy, ValueEnum)]
+enum ManifestDigest {
+    Sha256,
+    Sha384,
+}
+
+impl From<ManifestDigest> for DigestAlgorithm {
+    fn from(digest: ManifestDigest) -> Self {
+        match digest {
+            ManifestDigest::Sha256 => DigestAlgorithm::Sha256,
+            ManifestDigest::Sha384 => DigestAlgorithm::Sha384,
+        }
+    }
 }
 
 /// Runs the `taylor` CLI with `args`, where the first item is the program name, and returns
@@ -184,14 +203,15 @@ fn execute(cli: Cli) -> Result<(), String> {
     let manifest = parse(&mut Cursor::new(json.as_bytes()))
         .map_err(|e| format!("failed to parse manifest {source_path:?}: {e}"))?;
 
+    let digest_algorithm = DigestAlgorithm::from(cli.manifest_digest);
     let manifest_cbor =
         try_encode_manifest(&manifest).map_err(|e| format!("failed to encode manifest: {e}"))?;
     out(format_args!(
         "digest string :: {:?}",
-        manifest_cbor.digest()
+        hex::encode(digest_algorithm.digest(&manifest_cbor))
     ))?;
 
-    let envelope_cbor = build_envelope(manifest, signer.as_ref())
+    let envelope_cbor = build_envelope_with_digest(manifest, signer.as_ref(), digest_algorithm)
         .map_err(|e| format!("failed to build envelope: {e}"))?;
 
     out(format_args!(

@@ -1,5 +1,6 @@
 """Tests for the taylor Python API, cross-checked against the Rust golden fixtures."""
 
+import hashlib
 import json
 import math
 import pathlib
@@ -115,6 +116,31 @@ def test_es384_key_produces_a_valid_signature():
     )
     envelope = taylor.build_envelope(manifest_text("test"), key_pem=pem)
     assert_valid_signature(envelope, private_key.public_key(), hashes.SHA384(), coordinate_size=48)
+
+
+@pytest.mark.parametrize(
+    ("manifest_digest", "cose_id", "hash_function"),
+    [("sha256", -16, hashlib.sha256), ("sha384", -43, hashlib.sha384)],
+)
+def test_manifest_digest_uses_the_requested_algorithm(manifest_digest, cose_id, hash_function):
+    """The envelope's SUIT_Digest uses the requested algorithm and hashes the encoded manifest."""
+    text = manifest_text("test")
+    envelope = taylor.build_envelope(text, manifest_digest=manifest_digest)
+    algorithm, digest = cbor2.loads(auth_elements(envelope)[0])
+    assert algorithm == cose_id
+    assert digest == hash_function(taylor.encode_manifest(text)).digest()
+
+
+def test_manifest_digest_defaults_to_sha256():
+    """Without manifest_digest, the envelope is identical to one built with manifest_digest="sha256"."""
+    text = manifest_text("test")
+    assert taylor.build_envelope(text) == taylor.build_envelope(text, manifest_digest="sha256")
+
+
+def test_unsupported_manifest_digest_raises_value_error():
+    """An unsupported manifest_digest raises ValueError naming the algorithm."""
+    with pytest.raises(ValueError, match="md5"):
+        taylor.build_envelope(manifest_text("test"), manifest_digest="md5")
 
 
 def test_non_ascii_key_bytes_raise_signing_error():

@@ -13,6 +13,7 @@ def build_envelope(
     manifest_json: str,
     key_pem: Optional[str] = None,
     key_path: Optional[Union[str, os.PathLike[str]]] = None,
+    manifest_digest: str = "sha256",
 ) -> bytes: ...
 def render_template(
     template_path: Union[str, os.PathLike[str]],

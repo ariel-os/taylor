@@ -24,6 +24,8 @@ signed = taylor.build_envelope(manifest, key_path="key.pem")
 - `build_envelope` and `encode_manifest` accept the manifest as JSON text or as a mapping.
 - Signing keys are PEM-encoded ES256 or ES384 private keys, given either as text or bytes
   (`key_pem`) or as a file path (`key_path`).
+- `manifest_digest="sha384"` makes the manifest digest that the signature covers SHA-384
+  instead of the default SHA-256.
 - `render_template` renders a minijinja template into manifest JSON.
 - Errors are raised as `taylor.ManifestError`, `taylor.TemplateError`, or
   `taylor.SigningError`, all subclasses of `taylor.TaylorError`.
