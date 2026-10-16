@@ -1,6 +1,22 @@
 # Changelog
 
 
+## 0.2.1 - 2026-10-16
+
+- Added the `taylor-suit` Python package (imported as `taylor`), built with PyO3 and
+  maturin from the new `python/` workspace member. It provides `encode_manifest`,
+  `build_envelope` (signing with `key_pem` or `key_path`), `render_template`, the
+  `taylor` command, and the exceptions `TaylorError`, `ManifestError`, `TemplateError`,
+  and `SigningError`.
+- Fixed `taylor::cli::run` panicking when a write to stdout fails, for example on a
+  closed pipe; it now returns exit code 1. Failed writes to stderr are ignored.
+- CI now builds and tests the Python package on Python 3.9 and 3.13, and a new `wheels`
+  workflow builds release wheels and an sdist, then installs and tests the wheels on
+  Linux, macOS, and Windows.
+- The `taylor` crate and the `taylor-suit` Python package now share one version, set in
+  `[workspace.package]` in `Cargo.toml`. The `wheels` workflow fails if a release tag
+  doesn't match it.
+
 ## 0.2.0 - 2026-10-14
 
 - Added support for the optional SUIT extension manifest member
