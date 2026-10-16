@@ -71,7 +71,7 @@ cargo run -- \
 | Code | Meaning |
 | ---: | --- |
 | 0 | Success, including `--help` and `--version` |
-| 1 | Runtime failure, such as an unreadable file, invalid manifest, or bad signing key |
+| 1 | Runtime failure, such as an unreadable file, invalid manifest, bad signing key, or a failed write to stdout |
 | 2 | Usage error, such as a missing manifest source or conflicting arguments |
 
 ## Library usage
@@ -99,6 +99,49 @@ fn generate(json: &str, key_pem: Option<&str>) -> Result<Vec<u8>, Box<dyn std::e
   envelope with a PEM key given as text or as a file path.
 - `taylor::template::render` renders a `minijinja` template into manifest JSON.
 - `taylor::cli::run` runs the command-line interface in-process and returns its exit code.
+
+## Python package
+
+The `taylor-suit` package on PyPI provides Python bindings to the same Rust code. It installs
+as the `taylor` module plus a `taylor` command identical to the Rust CLI:
+
+```sh
+pip install taylor-suit
+```
+
+```python
+import json
+import taylor
+
+manifest = json.load(open("manifest.json"))
+unsigned = taylor.build_envelope(manifest)
+signed = taylor.build_envelope(manifest, key_path="key.pem")
+manifest_json = taylor.render_template("manifest.jinja", {"sequence_number": 7},
+                                       vars_file="vars.json")
+```
+
+- `build_envelope` and `encode_manifest` accept the manifest as JSON text or as a mapping.
+- Signing keys are given either as PEM text or bytes (`key_pem`) or as a file path
+  (`key_path`), not both.
+- Errors are raised as `taylor.ManifestError`, `taylor.TemplateError`, or
+  `taylor.SigningError`, all subclasses of `taylor.TaylorError`.
+- If the Rust binary is also installed with `cargo install taylor`, whichever `taylor`
+  comes first on `PATH` runs; both accept the same arguments, but their versions may differ.
+
+The bindings live in [`python/`](python/), a Cargo workspace member built with
+[maturin](https://www.maturin.rs/). To build and test them locally:
+
+```sh
+cd python
+python -m venv .venv && . .venv/bin/activate
+pip install maturin pytest cbor2 cryptography
+maturin develop
+pytest tests
+```
+
+The `Wheels` workflow builds wheels for Linux, macOS, and Windows plus an sdist on every
+`v*` tag, or when started manually. Publishing is manual: download the workflow artifacts
+and upload them with `twine upload` (or `maturin upload`).
 
 ## Supported manifest members
 
@@ -200,6 +243,16 @@ Runs the unit tests, all doc-tests, and these integration tests:
   `--var`, `--vars-file`, and `--render-only`, including the trevm example.
 - [`tests/cli_validation.rs`](tests/cli_validation.rs): checks that invalid invocations exit
   with code 2 and runtime failures exit with code 1.
+
+The Python package has its own tests in [`python/tests/`](python/tests/), which compare its
+output with the same golden fixtures and verify signatures with the `cryptography` package.
+Each test's docstring describes what it verifies and is copied into JUnit XML reports as a
+`description` property, so a test report can be generated with:
+
+```sh
+cd python
+pytest tests --junitxml=test-report.xml
+```
 
 ## Documentation
 

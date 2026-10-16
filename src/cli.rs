@@ -6,12 +6,13 @@
 //! | Code | Meaning |
 //! | ---: | --- |
 //! | 0 | Success, including `--help` and `--version` |
-//! | 1 | Runtime failure, such as an unreadable file, invalid manifest, or bad signing key |
+//! | 1 | Runtime failure, such as an unreadable file, invalid manifest, bad signing key, or a failed write to stdout |
 //! | 2 | Usage error, such as a missing manifest source or conflicting arguments |
 
 use std::ffi::OsString;
+use std::fmt::Arguments;
 use std::fs;
-use std::io::Cursor;
+use std::io::{self, Cursor, Write};
 use std::path::{Path, PathBuf};
 
 use clap::{ArgAction, CommandFactory, Parser};
@@ -72,8 +73,9 @@ struct Cli {
 /// Runs the `taylor` CLI with `args`, where the first item is the program name, and returns
 /// the process exit code (see the [module documentation](crate::cli) for its meaning).
 ///
-/// Errors are printed to stderr and the process is never exited. Bad input doesn't cause a
-/// panic, but a failed write to stdout, such as a closed pipe, still does.
+/// Errors are printed to stderr and the process is never exited. Neither bad input nor a failed
+/// output write causes a panic: a failed write to stdout, such as a closed pipe, returns exit
+/// code 1, and failed writes to stderr are ignored.
 ///
 /// # Examples
 ///
@@ -105,10 +107,20 @@ where
     match execute(cli) {
         Ok(()) => 0,
         Err(message) => {
-            eprintln!("error: {message}");
+            diag(format_args!("error: {message}"));
             1
         }
     }
+}
+
+/// Writes a line of the CLI's result to stdout.
+fn out(line: Arguments) -> Result<(), String> {
+    writeln!(io::stdout().lock(), "{line}").map_err(|e| format!("failed to write to stdout: {e}"))
+}
+
+/// Writes a diagnostic line to stderr, ignoring failures since there is nowhere left to report them.
+fn diag(line: Arguments) {
+    let _ = writeln!(io::stderr().lock(), "{line}");
 }
 
 /// Argument combinations clap can't express: its `requires` doesn't fire on these flags once
@@ -134,7 +146,7 @@ fn usage_error(cli: &Cli) -> Option<&'static str> {
 fn execute(cli: Cli) -> Result<(), String> {
     let (source_path, json) = match (cli.template_path, cli.json_path) {
         (Some(template_path), _) => {
-            eprintln!("Using template: {template_path:?}");
+            diag(format_args!("Using template: {template_path:?}"));
             let context = build_context(cli.vars_file.as_deref(), &cli.vars)
                 .map_err(|e| format!("failed to build template context: {e}"))?;
             let rendered = render(&template_path, &context)
@@ -142,7 +154,7 @@ fn execute(cli: Cli) -> Result<(), String> {
             (template_path, rendered)
         }
         (None, Some(json_path)) => {
-            eprintln!("Using path: {json_path:?}");
+            diag(format_args!("Using path: {json_path:?}"));
             let json = fs::read_to_string(&json_path)
                 .map_err(|e| format!("failed to read {json_path:?}: {e}"))?;
             (json_path, json)
@@ -153,7 +165,7 @@ fn execute(cli: Cli) -> Result<(), String> {
     if cli.render_only {
         match &cli.output {
             Some(out_dir) => write_output(out_dir, &source_path, "json", json.as_bytes())?,
-            None => println!("{json}"),
+            None => out(format_args!("{json}"))?,
         }
         return Ok(());
     }
@@ -174,12 +186,18 @@ fn execute(cli: Cli) -> Result<(), String> {
 
     let manifest_cbor =
         try_encode_manifest(&manifest).map_err(|e| format!("failed to encode manifest: {e}"))?;
-    println!("digest string :: {:?}", manifest_cbor.digest());
+    out(format_args!(
+        "digest string :: {:?}",
+        manifest_cbor.digest()
+    ))?;
 
     let envelope_cbor = build_envelope(manifest, signer.as_ref())
         .map_err(|e| format!("failed to build envelope: {e}"))?;
 
-    println!("CBOR Output of Envelope: {}", hex::encode(&envelope_cbor));
+    out(format_args!(
+        "CBOR Output of Envelope: {}",
+        hex::encode(&envelope_cbor)
+    ))?;
 
     if let Some(out_dir) = &cli.output {
         write_output(out_dir, &source_path, "cbor", &envelope_cbor)?;
@@ -208,6 +226,5 @@ fn write_output(
     };
     let out_path = out_dir.join(file_name);
     fs::write(&out_path, contents).map_err(|e| format!("failed to write {out_path:?}: {e}"))?;
-    println!("Wrote output to: {out_path:?}");
-    Ok(())
+    out(format_args!("Wrote output to: {out_path:?}"))
 }

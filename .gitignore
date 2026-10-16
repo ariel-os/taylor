@@ -3,3 +3,10 @@
 *.bin
 /out
 .vscode
+.venv/
+__pycache__/
+.pytest_cache/
+test-report.xml
+*.so
+*.pyd
+/dist

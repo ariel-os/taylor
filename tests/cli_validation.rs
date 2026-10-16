@@ -129,6 +129,22 @@ fn malformed_manifest_json_exits_with_code_1() {
 }
 
 #[test]
+fn closed_stdout_exits_with_code_1_instead_of_panicking() {
+    let (reader, writer) = std::io::pipe().expect("failed to create pipe");
+    // Closing the read end first makes the binary's first stdout write fail with EPIPE.
+    drop(reader);
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_taylor"))
+        .arg(json_path())
+        .stdout(writer)
+        .output()
+        .expect("failed to spawn taylor binary");
+    let stderr = stderr_of(&output);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("failed to write to stdout"), "{stderr}");
+    assert!(!stderr.contains("panicked"), "{stderr}");
+}
+
+#[test]
 fn invalid_signing_key_exits_with_code_1() {
     let scratch = scratch_dir("cli-invalid-key");
     let key_path = write_key_file(&scratch, "not a pem key");

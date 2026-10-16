@@ -1,0 +1,32 @@
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[project]
+name = "taylor-suit"
+description = "Generates IETF SUIT manifests, CBOR-encoded, from a JSON description"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSES/*"]
+keywords = ["suit", "cbor", "firmware", "manifest", "iot"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Embedded Systems",
+]
+dynamic = ["version"]
+
+[project.urls]
+Repository = "https://github.com/ariel-os/taylor"
+
+[project.scripts]
+taylor = "taylor.__main__:main"
+
+[project.optional-dependencies]
+test = ["pytest", "cbor2", "cryptography"]
+
+[tool.maturin]
+module-name = "taylor._taylor"
+features = ["pyo3/extension-module"]
+exclude = ["**/__pycache__/**"]
