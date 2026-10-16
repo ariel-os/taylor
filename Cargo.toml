@@ -1,6 +1,6 @@
 [package]
 name = "taylor"
-version = "0.2.0"
+version.workspace = true
 edition = "2024"
 description = "Generates IETF SUIT manifests, CBOR-encoded, from a JSON description"
 license = "MIT OR Apache-2.0"
@@ -28,3 +28,7 @@ signature = "2.2"
 
 [workspace]
 members = ["python"]
+
+# Shared by the taylor crate and the taylor-suit Python package.
+[workspace.package]
+version = "0.2.1"

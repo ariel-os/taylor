@@ -1,7 +1,7 @@
 # Changelog
 
 
-## Unreleased
+## 0.2.1 - 2026-10-16
 
 - Added the `taylor-suit` Python package (imported as `taylor`), built with PyO3 and
   maturin from the new `python/` workspace member. It provides `encode_manifest`,
@@ -13,6 +13,9 @@
 - CI now builds and tests the Python package on Python 3.9 and 3.13, and a new `wheels`
   workflow builds release wheels and an sdist, then installs and tests the wheels on
   Linux, macOS, and Windows.
+- The `taylor` crate and the `taylor-suit` Python package now share one version, set in
+  `[workspace.package]` in `Cargo.toml`. The `wheels` workflow fails if a release tag
+  doesn't match it.
 
 ## 0.2.0 - 2026-10-14
 
