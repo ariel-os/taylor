@@ -19,6 +19,10 @@
             }},
             {"suit-condition-vendor-identifier": 15},
             {"suit-condition-class-identifier": 15},
+            {"suit-condition-version": {
+                "comparison": "equal",
+                "value": [[1, 0, 0], [1, 1, 0], [2, 0, 0]]
+            }},
             {"suit-directive-override-parameters": {
                 "image-size": 60523,
                 "image-digest": {
