@@ -1,7 +1,7 @@
 # Changelog
 
 
-## Unreleased
+## 0.2.2 - 2026-10-19
 
 - Added `--manifest-digest sha256|sha384` to choose the hash algorithm of the manifest
   digest that the signature covers; the default stays `sha256`. The library gains

@@ -31,4 +31,4 @@ members = ["python"]
 
 # Shared by the taylor crate and the taylor-suit Python package.
 [workspace.package]
-version = "0.2.1"
+version = "0.2.2"
