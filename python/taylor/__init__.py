@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Mapping, Optional, Union
+from typing import Any, Literal, Mapping, Optional, Union
 
 from . import _taylor
 from ._taylor import ManifestError, SigningError, TaylorError, TemplateError
@@ -55,14 +55,18 @@ def build_envelope(
     *,
     key_pem: Optional[Union[str, bytes]] = None,
     key_path: Optional[StrPath] = None,
+    manifest_digest: Literal["sha256", "sha384"] = "sha256",
 ) -> bytes:
     """Encode a manifest as a tag-107 ``SUIT_Envelope``.
 
     The envelope is signed with a ``COSE_Sign1`` block when a PEM-encoded ES256 or ES384
     private key is given, either as ``key_pem`` or as a file path in ``key_path``.
+    ``manifest_digest`` selects the hash algorithm of the manifest digest that the signature
+    covers.
 
     Raises:
-        ValueError: if both ``key_pem`` and ``key_path`` are given.
+        ValueError: if both ``key_pem`` and ``key_path`` are given, or ``manifest_digest``
+            isn't supported.
         ManifestError: if the manifest is malformed or unsupported.
         SigningError: if the key can't be read or loaded.
     """
@@ -71,7 +75,7 @@ def build_envelope(
             key_pem = key_pem.decode("ascii")
         except UnicodeDecodeError as e:
             raise SigningError(f"invalid signing key: {e}") from e
-    return _taylor.build_envelope(_manifest_json(manifest), key_pem, key_path)
+    return _taylor.build_envelope(_manifest_json(manifest), key_pem, key_path, manifest_digest)
 
 
 def render_template(

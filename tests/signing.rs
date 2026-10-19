@@ -104,6 +104,41 @@ fn signed_envelope_appends_a_valid_es384_cose_sign1_block() {
 }
 
 #[test]
+fn manifest_digest_sha384_with_an_es384_key_signs_a_sha384_digest() {
+    let scratch = scratch_dir("es384-sha384-signed");
+    let key_path = write_key_file(&scratch, ES384_TEST_KEY_PEM);
+    let (ok, bytes) = run_on_test_json(
+        &[
+            "--key",
+            key_path.to_str().unwrap(),
+            "--manifest-digest",
+            "sha384",
+        ],
+        &scratch,
+    );
+    assert!(ok, "taylor should succeed with --manifest-digest sha384");
+
+    let (alg, digest) = manifest_digest(&bytes);
+    assert_eq!(alg, -43, "SHA-384 must use COSE alg -43");
+    assert_eq!(digest.len(), 48);
+
+    let elements = auth_wrapper_elements(&bytes);
+    let (protected, _unprotected, _payload, signature) = decode_cose_sign1(&elements[1]);
+    assert_eq!(protected_alg(&protected), -35);
+    assert_valid_es384_signature(&protected, as_bytes(&elements[0]), &signature);
+}
+
+#[test]
+fn manifest_digest_defaults_to_sha256() {
+    let scratch = scratch_dir("default-manifest-digest");
+    let (ok, bytes) = run_on_test_json(&[], &scratch);
+    assert!(ok);
+    let (alg, digest) = manifest_digest(&bytes);
+    assert_eq!(alg, -16, "SHA-256 must use COSE alg -16");
+    assert_eq!(digest.len(), 32);
+}
+
+#[test]
 fn signing_does_not_alter_the_manifest_or_digest_bytes() {
     let unsigned_scratch = scratch_dir("manifest-unchanged-unsigned");
     let (ok, unsigned_bytes) = run_on_test_json(&[], &unsigned_scratch);
