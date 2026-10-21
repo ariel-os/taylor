@@ -187,7 +187,7 @@ fn suit_set_version_is_encoded_as_a_cbor_version_value_bstr() {
 /// hand-written equivalent is easy to make.
 #[test]
 fn structural_try_each_branches_are_bstr_wrapped_array_elements() {
-    let cbor = build_envelope_cbor("examples/input/manifests/manifest-handler-standard.json");
+    let cbor = build_envelope_cbor("examples/input/manifests/manifest-handler-version.json");
     let (_, envelope) = decode_envelope(&cbor);
     let manifest_bstr = map_get(&envelope, 3).unwrap().as_bytes().unwrap();
     let manifest: Value = ciborium::de::from_reader(manifest_bstr.as_slice()).unwrap();
@@ -213,11 +213,38 @@ fn structural_try_each_branches_are_bstr_wrapped_array_elements() {
                 3,
                 "expected one branch per acceptable version"
             );
-            for branch in branches {
-                assert!(
-                    branch.as_bytes().is_some(),
-                    "each branch must be a bstr, not inlined"
+            let expected_comparisons = [1, 3, 5];
+            for (branch, expected_comparison) in branches.iter().zip(expected_comparisons) {
+                let branch_bstr = branch.as_bytes().expect("each branch must be a bstr");
+                let branch_value: Value = ciborium::de::from_reader(branch_bstr.as_slice())
+                    .expect("branch bstr must contain a valid command sequence");
+                let branch_commands = branch_value
+                    .as_array()
+                    .expect("branch sequence must be a flat array");
+                assert_eq!(branch_commands.len(), 4);
+                assert_eq!(branch_commands[0].as_integer(), Some(20.into()));
+                assert_eq!(branch_commands[2].as_integer(), Some(28.into()));
+                assert_eq!(branch_commands[3].as_integer(), Some(15.into()));
+
+                let parameters = branch_commands[1]
+                    .as_map()
+                    .expect("version override argument must be a map");
+                let version_bstr = parameters
+                    .iter()
+                    .find(|(key, _)| key.as_integer() == Some(28.into()))
+                    .and_then(|(_, value)| value.as_bytes())
+                    .expect("version parameter must be a bstr-wrapped CBOR tuple");
+                let version_match: Value = ciborium::de::from_reader(version_bstr.as_slice())
+                    .expect("version parameter bstr must contain a tuple");
+                let version_match = version_match
+                    .as_array()
+                    .expect("version match must be a two-element array");
+                assert_eq!(version_match.len(), 2);
+                assert_eq!(
+                    version_match[0].as_integer(),
+                    Some(expected_comparison.into())
                 );
+                assert!(matches!(version_match[1], Value::Array(_)));
             }
         }
         i += 2;

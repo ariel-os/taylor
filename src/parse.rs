@@ -41,6 +41,111 @@ fn parse_version_comparison(s: &str) -> Option<crate::manifest::VersionCompariso
     }
 }
 
+fn parse_version_string(value: &str) -> Option<Vec<i64>> {
+    if value.contains('+') {
+        return None;
+    }
+
+    let (release, prerelease) = match value.split_once('-') {
+        Some((release, prerelease)) => (release, Some(prerelease)),
+        None => (value, None),
+    };
+    let mut version = release
+        .split('.')
+        .map(parse_version_number)
+        .collect::<Option<Vec<_>>>()?;
+    if version.is_empty() || version.len() > 3 {
+        return None;
+    }
+
+    if let Some(prerelease) = prerelease {
+        let mut identifiers = prerelease.split('.');
+        let marker = match identifiers.next()? {
+            "rc" => -1,
+            "beta" => -2,
+            "alpha" => -3,
+            _ => return None,
+        };
+        version.push(marker);
+        for identifier in identifiers {
+            version.push(parse_version_number(identifier)?);
+        }
+    }
+
+    Some(version)
+}
+
+fn parse_version_number(value: &str) -> Option<i64> {
+    if value.is_empty()
+        || !value.bytes().all(|byte| byte.is_ascii_digit())
+        || (value.len() > 1 && value.starts_with('0'))
+    {
+        return None;
+    }
+    value.parse().ok()
+}
+
+fn parse_version_value(value: &Value) -> Option<Vec<i64>> {
+    match value {
+        Value::String(value) => parse_version_string(value),
+        Value::Array(values) if !values.is_empty() => values.iter().map(Value::as_i64).collect(),
+        _ => None,
+    }
+}
+
+fn parse_version_candidates(value: &Value) -> Option<Vec<Vec<i64>>> {
+    let candidates = value.as_array()?;
+    if candidates.is_empty() {
+        return None;
+    }
+    candidates.iter().map(parse_version_value).collect()
+}
+
+fn version_candidates_field(version: &Value) -> Option<&Value> {
+    version.get("versions").or_else(|| version.get("value"))
+}
+
+fn has_version_candidate_list(parameters: &Value) -> bool {
+    let Some(version_value) = parameters.get("version").and_then(version_candidates_field) else {
+        return false;
+    };
+    let Some(candidates) = version_value.as_array() else {
+        return false;
+    };
+    matches!(
+        candidates.first(),
+        None | Some(Value::String(_) | Value::Array(_))
+    )
+}
+
+fn parse_version_override(
+    parameters: &Value,
+    comparison: crate::manifest::VersionComparisonType,
+    version: Vec<i64>,
+) -> Result<SuitCommand, Error> {
+    let parameter_map = parameters
+        .as_object()
+        .ok_or_else(|| Error::UnsupportedParameter("Invalid version parameters".to_string()))?;
+    let mut parsed_parameters = Vec::with_capacity(parameter_map.len());
+    for (key, value) in parameter_map {
+        if key == "version" {
+            parsed_parameters.push(SuitParameter {
+                ident: crate::manifest::SuitParametersEnum::SuitVersion(
+                    crate::manifest::SuitVersionMatch {
+                        comparison,
+                        value: version.clone(),
+                    },
+                ),
+            });
+        } else {
+            parsed_parameters.push(parse_suit_parameters(key, value)?);
+        }
+    }
+    Ok(SuitCommand {
+        ident: SuitCommandEnum::SuitDirectiveOverrideParameters(parsed_parameters),
+    })
+}
+
 fn parse_suit_parameters(parse_key: &str, parse_value: &Value) -> Result<SuitParameter, Error> {
     use crate::manifest::SuitParametersEnum as Param;
 
@@ -89,12 +194,7 @@ fn parse_suit_parameters(parse_key: &str, parse_value: &Value) -> Result<SuitPar
 fn parse_version_match(value: &Value) -> Option<crate::manifest::SuitVersionMatch> {
     Some(crate::manifest::SuitVersionMatch {
         comparison: parse_version_comparison(value.get("comparison")?.as_str()?)?,
-        value: value
-            .get("value")?
-            .as_array()?
-            .iter()
-            .map(Value::as_i64)
-            .collect::<Option<Vec<i64>>>()?,
+        value: parse_version_value(value.get("value")?)?,
     })
 }
 
@@ -169,7 +269,8 @@ fn parse_suit_command(parse_key: &str, parse_value: &Value) -> Result<SuitComman
             // Raw form: a plain SUIT_Rep_Policy bitmask, paired with a "version"
             // parameter set separately via suit-directive-override-parameters.
             Some(policy) => SuitCommandEnum::SuitConditionVersion(policy),
-            // Convenience form: {"comparison": "...", "value": [[..], [..], ...]}.
+            // Convenience form: {"comparison": "...", "versions": ["1.2.3", ...]}.
+            // The legacy "value" field remains accepted as an alias.
             // suit-condition-version/suit-parameter-version only compare against one
             // version at a time, so a list of acceptable versions has no direct CDDL
             // encoding; this expands to one override-parameters+condition pair per
@@ -186,20 +287,13 @@ fn parse_suit_command(parse_key: &str, parse_value: &Value) -> Result<SuitComman
                     None => 15,
                     Some(policy) => policy.as_u64().ok_or_else(|| invalid(parse_key))?,
                 };
-                let versions = obj
-                    .get("value")
-                    .and_then(Value::as_array)
-                    .ok_or_else(|| invalid(parse_key))?;
+                let versions = parse_version_candidates(
+                    version_candidates_field(parse_value).ok_or_else(|| invalid(parse_key))?,
+                )
+                .ok_or_else(|| invalid(parse_key))?;
 
                 let mut branches = Vec::new();
-                for version in versions {
-                    let value = version
-                        .as_array()
-                        .ok_or_else(|| invalid(parse_key))?
-                        .iter()
-                        .map(Value::as_i64)
-                        .collect::<Option<Vec<i64>>>()
-                        .ok_or_else(|| invalid(parse_key))?;
+                for value in versions {
                     branches.push(vec![
                         SuitCommand {
                             ident: SuitCommandEnum::SuitDirectiveOverrideParameters(vec![
@@ -238,7 +332,9 @@ fn parse_command_sequence(parse_value: &Value) -> Result<Vec<SuitCommand>, Error
         .ok_or_else(|| Error::UnsupportedCommand("Invalid command sequence".to_string()))?;
 
     let mut buf = Vec::new();
-    for command in commands {
+    let mut index = 0;
+    while index < commands.len() {
+        let command = &commands[index];
         let obj = command
             .as_object()
             .ok_or_else(|| Error::UnsupportedCommand("Invalid command entry".to_string()))?;
@@ -247,7 +343,82 @@ fn parse_command_sequence(parse_value: &Value) -> Result<Vec<SuitCommand>, Error
             let message = format!("Command entry must have exactly one key, got {}", obj.len());
             return Err(Error::UnsupportedCommand(message));
         };
-        buf.push(parse_suit_command(key, value)?);
+
+        if key == "suit-directive-override-parameters" && has_version_candidate_list(value) {
+            let version_object =
+                value
+                    .get("version")
+                    .and_then(Value::as_object)
+                    .ok_or_else(|| {
+                        Error::UnsupportedParameter("Invalid version parameter".to_string())
+                    })?;
+            let comparison = version_object
+                .get("comparison")
+                .and_then(Value::as_str)
+                .and_then(parse_version_comparison)
+                .ok_or_else(|| {
+                    Error::UnsupportedParameter("Invalid version comparison".to_string())
+                })?;
+            let versions = parse_version_candidates(
+                version_object
+                    .get("versions")
+                    .or_else(|| version_object.get("value"))
+                    .ok_or_else(|| {
+                        Error::UnsupportedParameter("Invalid version parameter".to_string())
+                    })?,
+            )
+            .ok_or_else(|| Error::UnsupportedParameter("Invalid version candidates".to_string()))?;
+            let policy = commands
+                .get(index + 1)
+                .and_then(Value::as_object)
+                .filter(|condition| condition.len() == 1)
+                .and_then(|condition| condition.get("suit-condition-version"))
+                .and_then(Value::as_u64)
+                .ok_or_else(|| {
+                    Error::UnsupportedCommand(
+                        "Version parameters must be followed by suit-condition-version".to_string(),
+                    )
+                })?;
+
+            if versions.len() == 1 {
+                buf.push(parse_version_override(
+                    value,
+                    comparison,
+                    versions[0].clone(),
+                )?);
+                buf.push(SuitCommand {
+                    ident: SuitCommandEnum::SuitConditionVersion(policy),
+                });
+            } else {
+                let branches = versions
+                    .into_iter()
+                    .map(|version| {
+                        Ok(vec![
+                            parse_version_override(value, comparison, version)?,
+                            SuitCommand {
+                                ident: SuitCommandEnum::SuitConditionVersion(policy),
+                            },
+                        ])
+                    })
+                    .collect::<Result<Vec<_>, Error>>()?;
+                buf.push(SuitCommand {
+                    ident: SuitCommandEnum::SuitDirectiveTryEach(branches, false),
+                });
+            }
+            index += 2;
+            continue;
+        }
+
+        let parsed = parse_suit_command(key, value)?;
+        match parsed.ident {
+            SuitCommandEnum::SuitDirectiveTryEach(mut branches, false)
+                if key == "suit-condition-version" && value.is_object() && branches.len() == 1 =>
+            {
+                buf.append(&mut branches.remove(0));
+            }
+            ident => buf.push(SuitCommand { ident }),
+        }
+        index += 1;
     }
     Ok(buf)
 }
@@ -430,15 +601,131 @@ mod tests {
 
     #[test]
     fn parse_version_comparison_maps_all_known_names() {
+        let comparisons = [
+            ("lesser-equal", VersionComparisonType::LesserOrEqual),
+            ("greater-equal", VersionComparisonType::GreaterOrEqual),
+            ("greater", VersionComparisonType::Greater),
+            ("equal", VersionComparisonType::Equal),
+            ("lesser", VersionComparisonType::Lesser),
+        ];
+        for (name, expected) in comparisons {
+            let actual = parse_version_comparison(name).unwrap();
+            assert!(matches!(
+                (actual, expected),
+                (
+                    VersionComparisonType::LesserOrEqual,
+                    VersionComparisonType::LesserOrEqual
+                ) | (
+                    VersionComparisonType::GreaterOrEqual,
+                    VersionComparisonType::GreaterOrEqual
+                ) | (
+                    VersionComparisonType::Greater,
+                    VersionComparisonType::Greater
+                ) | (VersionComparisonType::Equal, VersionComparisonType::Equal)
+                    | (VersionComparisonType::Lesser, VersionComparisonType::Lesser)
+            ));
+        }
+        assert!(parse_version_comparison("less-than").is_none());
+    }
+
+    #[test]
+    fn version_strings_parse_to_suit_integer_vectors() {
+        assert_eq!(parse_version_string("1.2.3"), Some(vec![1, 2, 3]));
+        assert_eq!(parse_version_string("1.2-rc.3"), Some(vec![1, 2, -1, 3]));
+        assert_eq!(parse_version_string("1.2-beta"), Some(vec![1, 2, -2]));
+        assert_eq!(parse_version_string("1.2-alpha.1"), Some(vec![1, 2, -3, 1]));
+        assert_eq!(parse_version_string("1.02.3"), None);
+        assert_eq!(parse_version_string("1.2.3+build"), None);
+        assert_eq!(parse_version_string("1.2-preview.1"), None);
+    }
+
+    #[test]
+    fn version_override_alternatives_accept_strings_and_integer_arrays() {
+        let inputs = [
+            json!(["1.0.0", "1.1.0", "2.0.0"]),
+            json!([[1, 2, 3], [1, 2, 4], [1, 2, 5]]),
+        ];
+        let expected = [
+            vec![vec![1, 0, 0], vec![1, 1, 0], vec![2, 0, 0]],
+            vec![vec![1, 2, 3], vec![1, 2, 4], vec![1, 2, 5]],
+        ];
+
+        for (version_values, expected_versions) in inputs.into_iter().zip(expected) {
+            let input = json!([
+                {"suit-directive-override-parameters": {
+                    "image-size": 64,
+                    "version": {
+                        "comparison": "lesser-equal",
+                        "value": version_values
+                    }
+                }},
+                {"suit-condition-version": 15}
+            ]);
+            let commands = parse_command_sequence(&input).unwrap();
+            assert_eq!(commands.len(), 1);
+
+            let SuitCommandEnum::SuitDirectiveTryEach(branches, false) = &commands[0].ident else {
+                panic!("expected version alternatives to expand to try-each");
+            };
+            assert_eq!(branches.len(), expected_versions.len());
+
+            for (branch, expected_version) in branches.iter().zip(expected_versions) {
+                assert_eq!(branch.len(), 2);
+                let SuitCommandEnum::SuitDirectiveOverrideParameters(parameters) = &branch[0].ident
+                else {
+                    panic!("expected parameter override in branch");
+                };
+                assert!(parameters.iter().any(|parameter| matches!(
+                    parameter.ident,
+                    SuitParametersEnum::SuitImageSize(64)
+                )));
+                let version_match = parameters.iter().find_map(|parameter| {
+                    if let SuitParametersEnum::SuitVersion(version_match) = &parameter.ident {
+                        Some(version_match)
+                    } else {
+                        None
+                    }
+                });
+                let version_match = version_match.expect("version parameter in each branch");
+                assert!(matches!(
+                    version_match.comparison,
+                    VersionComparisonType::LesserOrEqual
+                ));
+                assert_eq!(version_match.value, expected_version);
+                assert!(matches!(
+                    branch[1].ident,
+                    SuitCommandEnum::SuitConditionVersion(15)
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn single_version_override_stays_a_direct_parameter_condition_pair() {
+        let input = json!([
+            {"suit-directive-override-parameters": {
+                "version": {"comparison": "greater", "value": ["1.2.3"]}
+            }},
+            {"suit-condition-version": 3}
+        ]);
+        let commands = parse_command_sequence(&input).unwrap();
+        assert_eq!(commands.len(), 2);
         assert!(matches!(
-            parse_version_comparison("greater"),
-            Some(VersionComparisonType::Greater)
+            commands[0].ident,
+            SuitCommandEnum::SuitDirectiveOverrideParameters(_)
         ));
         assert!(matches!(
-            parse_version_comparison("equal"),
-            Some(VersionComparisonType::Equal)
+            commands[1].ident,
+            SuitCommandEnum::SuitConditionVersion(3)
         ));
-        assert!(parse_version_comparison("not-a-comparison").is_none());
+    }
+
+    #[test]
+    fn version_override_alternatives_require_adjacent_version_condition() {
+        let input = json!([{"suit-directive-override-parameters": {
+            "version": {"comparison": "equal", "value": ["1.0.0", "2.0.0"]}
+        }}]);
+        assert!(parse_command_sequence(&input).is_err());
     }
 
     #[test]
@@ -450,14 +737,14 @@ mod tests {
         ));
     }
 
-    /// The `{"comparison", "value": [[..], ...]}` shorthand must expand to exactly one
+    /// The `{"comparison", "versions": [[..], ...]}` shorthand must expand to exactly one
     /// `[override-parameters{version}, suit-condition-version(policy)]` branch per listed
     /// version, OR-combined via `suit-directive-try-each` — never a partial/reordered set.
     #[test]
     fn suit_condition_version_shorthand_expands_to_one_try_each_branch_per_version() {
         let cmd = parse_suit_command(
             "suit-condition-version",
-            &json!({"comparison": "equal", "value": [[1, 0, 0], [1, 1, 0], [2, 0, 0]]}),
+            &json!({"comparison": "equal", "versions": [[1, 0, 0], [1, 1, 0], [2, 0, 0]]}),
         )
         .unwrap();
 
@@ -500,18 +787,46 @@ mod tests {
 
     #[test]
     fn suit_condition_version_shorthand_honours_explicit_policy() {
-        let cmd = parse_suit_command(
-            "suit-condition-version",
-            &json!({"comparison": "greater-equal", "value": [[1, 0, 0]], "policy": 3}),
-        )
+        let commands = parse_command_sequence(&json!([
+            {"suit-condition-version": {
+                "comparison": "greater-equal",
+                "value": [[1, 0, 0]],
+                "policy": 3
+            }}
+        ]))
         .unwrap();
-        let SuitCommandEnum::SuitDirectiveTryEach(branches, _) = cmd.ident else {
-            panic!("expected SuitDirectiveTryEach");
+        assert_eq!(commands.len(), 2);
+        let SuitCommandEnum::SuitDirectiveOverrideParameters(params) = &commands[0].ident else {
+            panic!("expected direct version parameter override");
+        };
+        let SuitParametersEnum::SuitVersion(version_match) = &params[0].ident else {
+            panic!("expected version parameter");
         };
         assert!(matches!(
-            branches[0][1].ident,
+            version_match.comparison,
+            VersionComparisonType::GreaterOrEqual
+        ));
+        assert_eq!(version_match.value, vec![1, 0, 0]);
+        assert!(matches!(
+            commands[1].ident,
             SuitCommandEnum::SuitConditionVersion(3)
         ));
+    }
+
+    #[test]
+    fn suit_condition_version_shorthand_accepts_legacy_value_alias() {
+        let commands = parse_command_sequence(&json!([
+            {"suit-condition-version": {
+                "comparison": "equal",
+                "value": [[1, 0, 0], [2, 0, 0]]
+            }}
+        ]))
+        .unwrap();
+
+        let SuitCommandEnum::SuitDirectiveTryEach(branches, false) = &commands[0].ident else {
+            panic!("expected legacy value alias to expand to try-each");
+        };
+        assert_eq!(branches.len(), 2);
     }
 
     #[test]

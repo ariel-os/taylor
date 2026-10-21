@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Fixed the support for SUIT version comparisons and `suit-condition-version`, including integer-vector
+  values, constrained dotted-version input, and alternatives encoded as `suit-directive-try-each`.
+  Taylor also accepts a `versions` convenience shorthand, which expands to the same CDDL-shaped
+  branch sequences.
 
 ## 0.2.2 - 2026-10-19
 

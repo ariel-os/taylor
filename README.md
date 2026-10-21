@@ -222,7 +222,96 @@ Taylor supports the following condition from `assets/suit-manifest-extension.cdd
 
 | JSON condition | CBOR code | Argument accepted by Taylor |
 | --- | ---: | --- |
-| `suit-condition-version` | 28 | A reporting-policy integer, or an object with `comparison`, `value`, and optional `policy` fields |
+| `suit-condition-version` | 28 | Reporting-policy integer; Taylor also accepts a convenience object described below |
+
+In the extension CDDL, a version match is a two-element array containing one comparison type and
+one non-empty integer vector (`[comparison-type, [+int]]`). In Taylor's JSON input, one version
+parameter is written as an object with `comparison` and `value`; `value` is a single version
+vector, not a list of alternatives. A single check uses the raw reporting-policy form of
+`suit-condition-version`:
+
+```json
+[
+  {"suit-directive-override-parameters": {
+    "version": {"comparison": "equal", "value": [1, 3, 0]}
+  }},
+  {"suit-condition-version": 15}
+]
+```
+
+Taylor also accepts a constrained dotted string in a single `value`, for example
+`{"comparison": "equal", "value": "1.3.0"}`; integer vectors are the CDDL-shaped input.
+
+To express alternatives, put each override and condition in its own command-sequence array under
+`suit-directive-try-each`:
+
+```json
+{"suit-directive-try-each": [
+  [
+    {"suit-directive-override-parameters": {
+      "version": {"comparison": "greater", "value": [1, 0, 0]}
+    }},
+    {"suit-condition-version": 15}
+  ],
+  [
+    {"suit-directive-override-parameters": {
+      "version": {"comparison": "equal", "value": [1, 3, 0]}
+    }},
+    {"suit-condition-version": 15}
+  ],
+  [
+    {"suit-directive-override-parameters": {
+      "version": {"comparison": "lesser", "value": [2, 0, 0]}
+    }},
+    {"suit-condition-version": 15}
+  ]
+]}
+```
+
+Each branch is attempted in order. A condition failure advances to the next branch; the first
+branch that completes without condition failure ends `try-each`. Thus the branch count is the
+maximum number of checks, not a count of checks that always run. The comparison names are
+`greater`, `greater-equal`, `equal`, `lesser-equal`, and `lesser`.
+
+Taylor also accepts a convenience shorthand on `suit-condition-version`: an object with
+`comparison`, `versions`, and optional `policy` fields. Taylor expands each listed vector into its
+own override/condition branch using the same comparison; this shorthand is not the CDDL form:
+
+```json
+{"suit-condition-version": {
+  "comparison": "equal",
+  "versions": [[1, 0, 0], [1, 3, 0]],
+  "policy": 15
+}}
+```
+
+The adjacent-parameter shorthand also accepts multiple candidates under `version.versions`
+(or the legacy `version.value` alias), followed by a raw version condition:
+
+```json
+[
+  {"suit-directive-override-parameters": {
+    "version": {
+      "comparison": "equal",
+      "versions": [[1, 0, 0], [1, 3, 0]]
+    }
+  }},
+  {"suit-condition-version": 15}
+]
+```
+
+The condition shorthand likewise accepts the legacy `value` candidate-list spelling:
+
+```json
+{"suit-condition-version": {
+  "comparison": "equal",
+  "value": ["1.0.0", "1.3.0"]
+}}
+```
+
+Taylor accepts constrained dotted strings in single values and candidate lists, converting them to
+integer vectors. This is not unrestricted Semantic Versioning: the machine-readable version
+constraints are defined by the update-management draft.
 
 ## How to add fields
 
